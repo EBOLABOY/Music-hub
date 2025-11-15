@@ -1,0 +1,17 @@
+{
+  "name": "music-hub",
+  "private": true,
+  "workspaces": [
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix api\" \"npm run dev --prefix web\"",
+    "dev:api": "npm run dev --prefix api",
+    "dev:web": "npm run dev --prefix web",
+    "install:all": "npm install --prefix api && npm install --prefix web"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

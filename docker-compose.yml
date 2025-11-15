@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    env_file: .env
+    volumes:
+      - ${DOWNLOAD_DIR:-./downloads}:${DOWNLOAD_DIR:-/downloads}
+    ports:
+      - "${PORT:-4000}:${PORT:-4000}"
