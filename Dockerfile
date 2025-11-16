@@ -14,15 +14,12 @@ COPY api ./api
 FROM node:20-alpine
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 WORKDIR /app
 COPY --from=api-build /app/api /app/api
 COPY --from=web-build /app/web/dist /app/web/dist
-RUN apk add --no-cache \
-    nss \
-    chromium \
-    dumb-init
+RUN apk add --no-cache dumb-init
 WORKDIR /app/api
+RUN npx playwright install-deps chromium
 RUN mkdir -p /ms-playwright && npx playwright install chromium
 EXPOSE 4000
-CMD ["node", "src/server.js"]
+CMD ["dumb-init", "node", "src/server.js"]
