@@ -12,10 +12,11 @@ x-app-env: &app-env
 
 services:
   app:
-    image: 1242772513/music-hub:main
+    image: 1242772513/music-hub:latest
     environment:
       <<: *app-env
     volumes:
       - /vol1/1000/Music:/vol1/1000/Music
     ports:
       - "4000:4000"
+
