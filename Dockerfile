@@ -16,6 +16,11 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=api-build /app/api /app/api
 COPY --from=web-build /app/web/dist /app/web/dist
+RUN apk add --no-cache \
+    nss \
+    chromium \
+    dumb-init && \
+    npx playwright install --with-deps chromium
 EXPOSE 4000
 WORKDIR /app/api
 CMD ["node", "src/server.js"]
