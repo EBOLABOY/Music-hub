@@ -17,9 +17,16 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 WORKDIR /app
 COPY --from=api-build /app/api /app/api
 COPY --from=web-build /app/web/dist /app/web/dist
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache \
+    dumb-init \
+    udev \
+    gcompat \
+    nss \
+    freetype \
+    harfbuzz \
+    fontconfig \
+    ttf-freefont
 WORKDIR /app/api
-RUN npx playwright install-deps chromium
 RUN mkdir -p /ms-playwright && npx playwright install chromium
 EXPOSE 4000
 CMD ["dumb-init", "node", "src/server.js"]
