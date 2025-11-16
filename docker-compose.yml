@@ -1,10 +1,23 @@
 version: "3.8"
 
+x-app-env: &app-env
+  PORT: 4000
+  DOWNLOAD_DIR: /vol1/1000/Music
+  TASK_CLEANUP_MS: 0
+  MUSIC_API_COUNT: 20
+  MUSIC_API_BITRATE: 999
+  CF_AUTOMATION: "true"
+  CF_COOKIE_TTL_MS: 1800000
+  CF_WAIT_AFTER_LOAD_MS: 5000
+  CF_NAVIGATION_TIMEOUT_MS: 45000
+  CF_LAUNCH_ARGS: ""
+
 services:
   app:
-    build: .
-    env_file: .env
+    image: 1242772513/music-hub:tagname
+    environment:
+      <<: *app-env
     volumes:
-      - ${DOWNLOAD_DIR:-./downloads}:${DOWNLOAD_DIR:-/downloads}
+      - /vol1/1000/Music:/vol1/1000/Music
     ports:
-      - "${PORT:-4000}:${PORT:-4000}"
+      - "4000:4000"
