@@ -8,9 +8,11 @@ import config from './config.js';
 import TaskStore from './taskStore.js';
 import createRouter from './routes.js';
 import DownloadManager from './downloadManager.js';
+import LibraryService from './libraryService.js';
 
 const app = express();
 const taskStore = new TaskStore();
+const libraryService = new LibraryService(config);
 const downloadManager = new DownloadManager({
   downloadDir: config.downloadDir,
   taskStore,
@@ -21,7 +23,7 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan(config.env === 'production' ? 'combined' : 'dev'));
 
-app.use('/api', createRouter({ taskStore, downloadManager, config }));
+app.use('/api', createRouter({ taskStore, downloadManager, libraryService, config }));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

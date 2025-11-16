@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
+import { sanitizeFilename, downloadSimpleFile } from './utils.js';
 
-const sanitizeFilename = (name) => name.replace(/[\\/:*?"<>|]/g, '_');
 const DEFAULT_EXTENSION = '.mp3';
 const CONTENT_TYPE_EXTENSION_MAP = {
   'audio/flac': '.flac',
@@ -109,8 +109,8 @@ class DownloadManager {
     this.active = false;
   }
 
-  enqueue(taskId, downloadUrl, filename) {
-    this.queue.push({ taskId, downloadUrl, filename });
+  enqueue(taskId, urls, metadata) {
+    this.queue.push({ taskId, urls, metadata });
     const task = this.taskStore.getTask(taskId);
     if (task) {
       this.taskStore.updateTask(taskId, { status: 'queued', progress: 0 });
@@ -122,12 +122,13 @@ class DownloadManager {
     if (this.active || !this.queue.length) return;
     this.active = true;
     const job = this.queue.shift();
+    job.finalDir = null;
     try {
       await this.handleJob(job);
     } catch (error) {
       console.error(`download error for task ${job.taskId}:`, error.message);
       this.taskStore.updateTask(job.taskId, { status: 'failed', error: error.message });
-      await this.removePartialFile(job.resolvedFilename || job.filename);
+      await this.removePartialFiles(job.finalDir);
       this.scheduleCleanup(job.taskId);
     } finally {
       this.active = false;
@@ -136,14 +137,22 @@ class DownloadManager {
   }
 
   async handleJob(job) {
-    const { taskId, downloadUrl } = job;
-    const requestedName = job.filename || `${taskId}${DEFAULT_EXTENSION}`;
-    const safeRequestedName = sanitizeFilename(requestedName);
-    await fs.promises.mkdir(this.downloadDir, { recursive: true });
+    const { taskId, urls, metadata } = job;
+    const { audioUrl, coverUrl, lyricsContent } = urls;
+    if (!audioUrl) {
+      throw new Error('Missing audio url');
+    }
+
+    const safeArtist = sanitizeFilename(metadata?.artist || 'Unknown Artist');
+    const safeAlbum = sanitizeFilename(metadata?.album || 'Unknown Album');
+    const safeTitle = sanitizeFilename(metadata?.title || `track-${taskId}`);
+    const finalDir = path.join(this.downloadDir, safeArtist, safeAlbum);
+    job.finalDir = finalDir;
+    await fs.promises.mkdir(finalDir, { recursive: true });
     this.taskStore.updateTask(taskId, { status: 'downloading', progress: 0 });
 
     const response = await axios({
-      url: downloadUrl,
+      url: audioUrl,
       method: 'GET',
       responseType: 'stream',
       headers: {
@@ -156,12 +165,11 @@ class DownloadManager {
 
     const resolvedExtension = resolveExtension({
       headers: response.headers,
-      downloadUrl,
-      requestedFilename: safeRequestedName
+      downloadUrl: audioUrl,
+      requestedFilename: `${safeTitle}${DEFAULT_EXTENSION}`
     });
-    const finalFilename = replaceExtension(safeRequestedName, resolvedExtension);
-    job.resolvedFilename = finalFilename;
-    const destPath = path.join(this.downloadDir, finalFilename);
+    const finalFilename = `${safeTitle}${resolvedExtension}`;
+    const destPath = path.join(finalDir, finalFilename);
 
     const totalBytes = Number(response.headers['content-length'] || 0);
     let downloaded = 0;
@@ -182,18 +190,48 @@ class DownloadManager {
       response.data.on('error', reject);
     });
 
-    this.taskStore.updateTask(taskId, { status: 'completed', progress: 1, filePath: destPath });
+    this.taskStore.updateTask(taskId, {
+      status: 'completed',
+      progress: 1,
+      filePath: finalDir,
+      files: {
+        audio: destPath
+      }
+    });
+
+    if (lyricsContent) {
+      const lrcPath = path.join(finalDir, `${safeTitle}.lrc`);
+      try {
+        await fs.promises.writeFile(lrcPath, lyricsContent, 'utf8');
+      } catch (error) {
+        console.warn(`Failed to write lyrics file ${lrcPath}: ${error.message}`);
+      }
+    }
+
+    if (coverUrl) {
+      let coverExt = '.jpg';
+      try {
+        const coverUrlObject = new URL(coverUrl);
+        const extCandidate = path.extname(coverUrlObject.pathname);
+        if (extCandidate) {
+          coverExt = extCandidate;
+        }
+      } catch (error) {
+        // ignore parsing errors
+      }
+      const coverPath = path.join(finalDir, `cover${coverExt || '.jpg'}`);
+      await downloadSimpleFile(coverUrl, coverPath);
+    }
+
     this.scheduleCleanup(taskId);
   }
 
-  async removePartialFile(filename) {
-    if (!filename) return;
-    const safeName = sanitizeFilename(filename);
-    const destPath = path.join(this.downloadDir, safeName);
+  async removePartialFiles(directory) {
+    if (!directory) return;
     try {
-      await fs.promises.unlink(destPath);
+      await fs.promises.rm(directory, { recursive: true, force: true });
     } catch (error) {
-      // ignore missing files
+      console.warn(`Failed to remove partial directory ${directory}: ${error.message}`);
     }
   }
 

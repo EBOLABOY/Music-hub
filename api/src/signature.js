@@ -1,6 +1,16 @@
 import crypto from 'crypto';
 import config from './config.js';
 
+const customUrlEncode = (str) => {
+  if (str === null || typeof str === 'undefined') return '';
+  return encodeURIComponent(String(str))
+    .replace(/\(/g, '%28')
+    .replace(/\)/g, '%29')
+    .replace(/\*/g, '%2A')
+    .replace(/'/g, '%27')
+    .replace(/!/g, '%21');
+};
+
 const padVersionPart = (part) => part.padStart(2, '0');
 
 const packVersion = (version) =>
@@ -20,11 +30,11 @@ const md5Tail = (payload) =>
   crypto.createHash('md5').update(payload).digest('hex').slice(-8).toUpperCase();
 
 export const buildSearchSignature = (keyword, timestamp) => {
-  const raw = encodeURIComponent(String(keyword ?? ''));
+  const raw = customUrlEncode(keyword);
   return md5Tail(buildBasePayload(raw, timestamp));
 };
 
 export const buildUrlSignature = (trackId, timestamp) => {
-  const raw = encodeURIComponent(String(trackId ?? ''));
+  const raw = customUrlEncode(trackId);
   return md5Tail(buildBasePayload(raw, timestamp));
 };

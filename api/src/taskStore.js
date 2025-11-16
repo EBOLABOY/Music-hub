@@ -5,14 +5,16 @@ class TaskStore {
     this.tasks = new Map();
   }
 
-  createTask({ trackId, title, artist, source }) {
+  createTask({ trackId, picId, title, artist, album, source }) {
     const id = uuid();
     const now = new Date().toISOString();
     const task = {
       id,
       trackId,
+      picId,
       title,
       artist,
+      album,
       source,
       status: 'queued',
       progress: 0,
