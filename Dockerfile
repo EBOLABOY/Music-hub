@@ -19,8 +19,8 @@ COPY --from=web-build /app/web/dist /app/web/dist
 RUN apk add --no-cache \
     nss \
     chromium \
-    dumb-init && \
-    npx playwright install --with-deps chromium
-EXPOSE 4000
+    dumb-init
 WORKDIR /app/api
+RUN npx playwright install chromium
+EXPOSE 4000
 CMD ["node", "src/server.js"]
