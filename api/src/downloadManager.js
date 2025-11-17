@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
+import { pipeline } from 'stream/promises';
+import NodeID3 from 'node-id3';
+import flac from 'flac-metadata';
 import { sanitizeFilename, downloadSimpleFile } from './utils.js';
 
 const DEFAULT_EXTENSION = '.mp3';
@@ -21,6 +24,13 @@ const FMT_EXTENSION_MAP = {
   '5': '.mp3',
   '6': '.flac',
   '7': '.flac'
+};
+
+const COVER_MIME_MAP = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp'
 };
 
 const normalizeExtension = (ext) => {
@@ -100,6 +110,79 @@ const resolveExtension = ({ headers, downloadUrl, requestedFilename }) => {
   return DEFAULT_EXTENSION;
 };
 
+const formatNumber = (value, pad = 2) => {
+  if (value === undefined || value === null) return null;
+  const parsed = typeof value === 'number' ? value : parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const width = Math.max(pad, String(parsed).length);
+  return String(parsed).padStart(width, '0');
+};
+
+const buildFilenameBase = (title, trackNumber) => {
+  const safeTitle = sanitizeFilename(title || 'track');
+  const formattedTrack = formatNumber(trackNumber);
+  return formattedTrack ? `${formattedTrack} - ${safeTitle}` : safeTitle;
+};
+
+const detectCoverMimeType = (coverUrlOrPath) => {
+  const ext = path.extname(coverUrlOrPath || '').toLowerCase();
+  return COVER_MIME_MAP[ext] || 'image/jpeg';
+};
+
+const buildVorbisComments = (metadata) => {
+  if (!metadata) return [];
+  const comments = [];
+  const push = (key, value) => {
+    if (value) {
+      comments.push(`${key}=${value}`);
+    }
+  };
+  push('TITLE', metadata.title);
+  push('ARTIST', metadata.artist);
+  push('ALBUM', metadata.album);
+  if (metadata.albumArtist && metadata.albumArtist !== metadata.artist) {
+    push('ALBUMARTIST', metadata.albumArtist);
+  }
+  if (metadata.trackNumber) {
+    push('TRACKNUMBER', String(metadata.trackNumber));
+  }
+  if (metadata.discNumber) {
+    push('DISCNUMBER', String(metadata.discNumber));
+  }
+  if (metadata.releaseYear) {
+    push('DATE', String(metadata.releaseYear));
+  }
+  return comments;
+};
+
+const buildId3Tags = (metadata, coverBuffer, coverMime) => {
+  if (!metadata) return null;
+  const tags = {
+    title: metadata.title || undefined,
+    artist: metadata.artist || undefined,
+    album: metadata.album || undefined,
+    performerInfo: metadata.albumArtist || metadata.artist || undefined,
+    albumArtist: metadata.albumArtist || metadata.artist || undefined,
+    year: metadata.releaseYear ? String(metadata.releaseYear) : undefined,
+    trackNumber: metadata.trackNumber ? String(metadata.trackNumber) : undefined,
+    partOfSet: metadata.discNumber ? String(metadata.discNumber) : undefined
+  };
+  if (coverBuffer) {
+    tags.image = {
+      mime: coverMime || 'image/jpeg',
+      type: { id: 3, name: 'front cover' },
+      description: 'cover',
+      imageBuffer: coverBuffer
+    };
+  }
+  Object.keys(tags).forEach((key) => {
+    if (tags[key] === undefined || tags[key] === null) {
+      delete tags[key];
+    }
+  });
+  return Object.keys(tags).length ? tags : null;
+};
+
 class DownloadManager {
   constructor({ downloadDir, taskStore, cleanupMs = 0 }) {
     this.downloadDir = downloadDir;
@@ -143,9 +226,10 @@ class DownloadManager {
       throw new Error('Missing audio url');
     }
 
-    const safeArtist = sanitizeFilename(metadata?.artist || 'Unknown Artist');
+    const artistForPath = metadata?.albumArtist || metadata?.artist || 'Unknown Artist';
+    const safeArtist = sanitizeFilename(artistForPath);
     const safeAlbum = sanitizeFilename(metadata?.album || 'Unknown Album');
-    const safeTitle = sanitizeFilename(metadata?.title || `track-${taskId}`);
+    const filenameBase = buildFilenameBase(metadata?.title || `track-${taskId}`, metadata?.trackNumber);
     const finalDir = path.join(this.downloadDir, safeArtist, safeAlbum);
     job.finalDir = finalDir;
     await fs.promises.mkdir(finalDir, { recursive: true });
@@ -166,9 +250,9 @@ class DownloadManager {
     const resolvedExtension = resolveExtension({
       headers: response.headers,
       downloadUrl: audioUrl,
-      requestedFilename: `${safeTitle}${DEFAULT_EXTENSION}`
+      requestedFilename: `${filenameBase}${DEFAULT_EXTENSION}`
     });
-    const finalFilename = `${safeTitle}${resolvedExtension}`;
+    const finalFilename = `${filenameBase}${resolvedExtension}`;
     const destPath = path.join(finalDir, finalFilename);
 
     const totalBytes = Number(response.headers['content-length'] || 0);
@@ -190,40 +274,179 @@ class DownloadManager {
       response.data.on('error', reject);
     });
 
+    let lyricsPath = null;
+    if (lyricsContent) {
+      lyricsPath = path.join(finalDir, `${filenameBase}.lrc`);
+      try {
+        await fs.promises.writeFile(lyricsPath, lyricsContent, 'utf8');
+      } catch (error) {
+        console.warn(`Failed to write lyrics file ${lyricsPath}: ${error.message}`);
+      }
+    }
+
+    let coverAsset = null;
+    if (coverUrl) {
+      try {
+        coverAsset = await this.downloadCoverAsset(coverUrl, finalDir);
+      } catch (error) {
+        console.warn(`Failed to download cover for ${destPath}: ${error.message}`);
+      }
+    }
+    try {
+      await this.applyAudioMetadata(destPath, metadata, coverAsset);
+    } catch (error) {
+      console.warn(`Failed to apply metadata for ${destPath}: ${error.message}`);
+    }
+
     this.taskStore.updateTask(taskId, {
       status: 'completed',
       progress: 1,
       filePath: finalDir,
       files: {
-        audio: destPath
+        audio: destPath,
+        lyrics: lyricsPath,
+        cover: coverAsset?.path || null
+      },
+      metadata: {
+        title: metadata?.title || null,
+        album: metadata?.album || null,
+        artist: metadata?.artist || null,
+        trackNumber: metadata?.trackNumber || null,
+        discNumber: metadata?.discNumber || null,
+        releaseYear: metadata?.releaseYear || null
       }
     });
 
-    if (lyricsContent) {
-      const lrcPath = path.join(finalDir, `${safeTitle}.lrc`);
-      try {
-        await fs.promises.writeFile(lrcPath, lyricsContent, 'utf8');
-      } catch (error) {
-        console.warn(`Failed to write lyrics file ${lrcPath}: ${error.message}`);
-      }
-    }
-
-    if (coverUrl) {
-      let coverExt = '.jpg';
-      try {
-        const coverUrlObject = new URL(coverUrl);
-        const extCandidate = path.extname(coverUrlObject.pathname);
-        if (extCandidate) {
-          coverExt = extCandidate;
-        }
-      } catch (error) {
-        // ignore parsing errors
-      }
-      const coverPath = path.join(finalDir, `cover${coverExt || '.jpg'}`);
-      await downloadSimpleFile(coverUrl, coverPath);
-    }
-
     this.scheduleCleanup(taskId);
+  }
+
+  async downloadCoverAsset(coverUrl, finalDir) {
+    let coverExt = '.jpg';
+    try {
+      const coverUrlObject = new URL(coverUrl);
+      const extCandidate = path.extname(coverUrlObject.pathname);
+      if (extCandidate) {
+        coverExt = extCandidate;
+      }
+    } catch {
+      // ignore parsing errors and fallback to jpg
+    }
+    const resolvedExt = coverExt || '.jpg';
+    const coverPath = path.join(finalDir, `cover${resolvedExt}`);
+    const buffer = await downloadSimpleFile(coverUrl, coverPath, { returnBuffer: true });
+    if (!buffer) {
+      return null;
+    }
+    return {
+      path: coverPath,
+      buffer,
+      mimeType: detectCoverMimeType(coverPath)
+    };
+  }
+
+  async applyAudioMetadata(destPath, metadata, coverAsset) {
+    if (!metadata) return;
+    const extension = path.extname(destPath).toLowerCase();
+    if (extension === '.mp3') {
+      await this.writeId3Tags(destPath, metadata, coverAsset);
+    } else if (extension === '.flac') {
+      await this.writeFlacMetadata(destPath, metadata, coverAsset);
+    }
+  }
+
+  async writeId3Tags(destPath, metadata, coverAsset) {
+    const tags = buildId3Tags(metadata, coverAsset?.buffer, coverAsset?.mimeType);
+    if (!tags) return;
+    await new Promise((resolve, reject) => {
+      NodeID3.update(tags, destPath, (error) => {
+        if (error) return reject(error);
+        return resolve();
+      });
+    });
+  }
+
+  async writeFlacMetadata(destPath, metadata, coverAsset) {
+    const vorbisComments = buildVorbisComments(metadata);
+    const hasCover = Boolean(coverAsset?.buffer?.length);
+    if (!vorbisComments.length && !hasCover) return;
+
+    const tempPath = `${destPath}.tmp`;
+    const backupPath = `${destPath}.bak`;
+    const processor = new flac.Processor();
+
+    const shouldAppend = vorbisComments.length > 0 || hasCover;
+    let vorbisBlock = null;
+    let pictureBlock = null;
+
+    processor.on('preprocess', function (mdb) {
+      if (mdb.type === flac.Processor.MDB_TYPE_VORBIS_COMMENT) {
+        mdb.remove();
+      }
+      if (mdb.type === flac.Processor.MDB_TYPE_PICTURE) {
+        mdb.remove();
+      }
+      if (mdb.isLast && shouldAppend) {
+        mdb.isLast = false;
+        if (vorbisComments.length > 0) {
+          vorbisBlock = flac.data.MetaDataBlockVorbisComment.create(
+            !hasCover,
+            'music-hub',
+            vorbisComments
+          );
+        }
+        if (hasCover) {
+          pictureBlock = flac.data.MetaDataBlockPicture.create(
+            true,
+            3,
+            coverAsset.mimeType || 'image/jpeg',
+            '',
+            0,
+            0,
+            0,
+            0,
+            coverAsset.buffer
+          );
+          if (vorbisBlock) {
+            vorbisBlock.isLast = false;
+          }
+        }
+      }
+    });
+
+    processor.on('postprocess', function (mdb) {
+      if (mdb.isLast) {
+        if (vorbisBlock) {
+          this.push(vorbisBlock.publish());
+        }
+        if (pictureBlock) {
+          this.push(pictureBlock.publish());
+        }
+        vorbisBlock = null;
+        pictureBlock = null;
+      }
+    });
+
+    try {
+      await pipeline(fs.createReadStream(destPath), processor, fs.createWriteStream(tempPath));
+    } catch (error) {
+      await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+      throw error;
+    }
+    let backupCreated = false;
+    try {
+      await fs.promises.rename(destPath, backupPath);
+      backupCreated = true;
+      await fs.promises.rename(tempPath, destPath);
+      await fs.promises.rm(backupPath, { force: true });
+    } catch (error) {
+      await fs.promises.rm(tempPath, { force: true }).catch(() => {});
+      if (backupCreated) {
+        await fs.promises
+          .rename(backupPath, destPath)
+          .catch(() => console.warn('Failed to restore original FLAC after metadata error.'));
+      }
+      throw error;
+    }
   }
 
   async removePartialFiles(directory) {

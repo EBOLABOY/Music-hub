@@ -5,6 +5,8 @@ import {
   resolveTrackCoverUrl,
   resolveTrackLyrics
 } from './musicSource.js';
+import { fetchFallbackCover, fetchFallbackLyrics } from './fallbackAssets.js';
+import { fetchTrackMetadata } from './trackMetadata.js';
 
 const extractUrl = (payload) => {
   if (!payload) return null;
@@ -143,10 +145,23 @@ const createRouter = ({ taskStore, downloadManager, libraryService, config }) =>
         source
       });
 
-      const [audioInfo, coverInfo, lyricInfo] = await Promise.allSettled([
+      const metadataPromise = fetchTrackMetadata({
+        trackId,
+        source,
+        fallback: {
+          title: safeTitle,
+          artist: allArtists,
+          album: safeAlbum,
+          albumArtist: primaryArtist
+        },
+        config
+      });
+
+      const [audioInfo, coverInfo, lyricInfo, metadataInfo] = await Promise.allSettled([
         resolveTrackUrl(trackId, source),
         resolveTrackCoverUrl(picId || trackId, source),
-        resolveTrackLyrics(trackId, source, safeTitle, allArtists, safeAlbum)
+        resolveTrackLyrics(trackId, source, safeTitle, allArtists, safeAlbum),
+        metadataPromise
       ]);
 
       const audioResult =
@@ -175,21 +190,75 @@ const createRouter = ({ taskStore, downloadManager, libraryService, config }) =>
         });
       }
 
-      const coverResult =
+      let coverResult =
         coverInfo.status === 'fulfilled' ? extractUrl(coverInfo.value) : null;
-      const lyricResult = lyricInfo.status === 'fulfilled' ? lyricInfo.value : null;
+      let lyricResult = lyricInfo.status === 'fulfilled' ? lyricInfo.value : null;
+      const metadata =
+        metadataInfo.status === 'fulfilled'
+          ? metadataInfo.value
+          : {
+              title: safeTitle,
+              artist: allArtists,
+              album: safeAlbum,
+              albumArtist: primaryArtist,
+              trackNumber: null,
+              discNumber: null,
+              releaseYear: null,
+              coverUrl: null,
+              source,
+              trackId
+            };
+
+      const finalTitle = metadata.title || safeTitle;
+      const finalArtist = metadata.artist || allArtists;
+      const finalAlbum = metadata.album || safeAlbum;
+      const finalAlbumArtist = metadata.albumArtist || finalArtist;
+      const stableSources = Array.isArray(config.musicSource?.stableSources)
+        ? config.musicSource.stableSources
+        : [];
+
+      const fallbackContext = { title: finalTitle, artist: finalArtist, album: finalAlbum };
+      if (!coverResult && stableSources.length > 0) {
+        const fallbackCover = await fetchFallbackCover(fallbackContext, stableSources);
+        if (fallbackCover?.url) {
+          coverResult = fallbackCover.url;
+          if (!metadata.coverUrl) {
+            metadata.coverUrl = fallbackCover.url;
+          }
+        }
+      }
+
+      if (!lyricResult && stableSources.length > 0) {
+        const fallbackLyrics = await fetchFallbackLyrics(fallbackContext, stableSources);
+        if (fallbackLyrics?.lyrics) {
+          lyricResult = fallbackLyrics.lyrics;
+        }
+      }
+
+      const finalCoverUrl = coverResult || metadata.coverUrl || null;
 
       const urls = {
         audioUrl: audioResult,
-        coverUrl: coverResult,
+        coverUrl: finalCoverUrl,
         lyricsContent: lyricResult
       };
 
       taskStore.attachDownloadUrl(task.id, audioResult);
       downloadManager.enqueue(task.id, urls, {
-        artist: primaryArtist,
-        title: safeTitle,
-        album: safeAlbum
+        artist: finalArtist,
+        albumArtist: finalAlbumArtist,
+        title: finalTitle,
+        album: finalAlbum,
+        trackNumber: metadata.trackNumber,
+        discNumber: metadata.discNumber,
+        releaseYear: metadata.releaseYear,
+        source,
+        trackId
+      });
+      taskStore.updateTask(task.id, {
+        title: finalTitle,
+        artist: finalArtist,
+        album: finalAlbum
       });
       res.status(201).json(taskStore.getTask(task.id));
     } catch (error) {

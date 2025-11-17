@@ -3,8 +3,9 @@ import axios from 'axios';
 
 export const sanitizeFilename = (name = '') => name.replace(/[\\/:*?"<>|]/g, '_');
 
-export const downloadSimpleFile = async (url, destPath) => {
+export const downloadSimpleFile = async (url, destPath, options = {}) => {
   if (!url) return false;
+  const { returnBuffer = false, timeout = 15000 } = options;
   try {
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
@@ -13,13 +14,16 @@ export const downloadSimpleFile = async (url, destPath) => {
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
         Referer: 'https://music.gdstudio.xyz/'
       },
-      timeout: 15000
+      timeout
     });
-    await fs.promises.writeFile(destPath, response.data);
-    return true;
+    const buffer = Buffer.from(response.data);
+    if (destPath) {
+      await fs.promises.writeFile(destPath, buffer);
+    }
+    return returnBuffer ? buffer : true;
   } catch (error) {
     console.warn(`Failed to download extra file ${url}: ${error.message}`);
-    return false;
+    return returnBuffer ? null : false;
   }
 };
 

@@ -5,6 +5,7 @@ import { URLSearchParams } from 'url';
 import config from './config.js';
 import { buildSearchSignature, buildUrlSignature } from './signature.js';
 import CloudflareCookieProvider from './cloudflareCookies.js';
+import rateLimiter from './rateLimiter.js';
 
 const resolveProxyAgent = () => {
   const proxyUrl =
@@ -58,6 +59,7 @@ const fetchServerTime = async () => {
 };
 
 const apiRequest = async ({ source = 'qobuz', ...params }) => {
+  await rateLimiter.consume();
   const callback = buildCallback();
   const cookieHeader = await cloudflareCookies.getCookieHeader();
   const bodyParams = { ...params, source };
@@ -169,6 +171,7 @@ export const resolveTrackUrl = async (trackId, source = 'qobuz') => {
 
   const attempts = [];
   for (const br of bitrateCandidates) {
+    await rateLimiter.consume();
     const payload = new URLSearchParams({
       ...baseParams,
       br: String(br)

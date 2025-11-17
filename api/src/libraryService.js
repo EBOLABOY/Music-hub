@@ -9,6 +9,7 @@ import {
   pickBetterMatch
 } from './utils.js';
 import { searchTracks, resolveTrackCoverUrl, resolveTrackLyrics } from './musicSource.js';
+import { fetchFallbackCover, fetchFallbackLyrics } from './fallbackAssets.js';
 
 const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav'];
 
@@ -23,9 +24,13 @@ const fileExists = async (targetPath) => {
 
 class LibraryService {
   constructor(config) {
+    this.config = config || {};
     this.downloadDir = config.downloadDir || null;
     this.isScanning = false;
     this.processedLogs = [];
+    this.stableSources = Array.isArray(config?.musicSource?.stableSources)
+      ? config.musicSource.stableSources
+      : [];
 
     if (!this.downloadDir) {
       console.warn('DOWNLOAD_DIR is not set. Library service will remain disabled.');
@@ -316,16 +321,27 @@ class LibraryService {
         ? bestMatch.artist.join(', ')
         : bestMatch.artist || artist;
       const resolvedAlbum = bestMatch.album || bestMatch.album_name || album;
+      const stableSources = this.config?.musicSource?.stableSources || [];
 
       if (lrcMissing) {
         try {
-          const lyricsContent = await resolveTrackLyrics(
+          let lyricsContent = await resolveTrackLyrics(
             trackId,
             source,
             resolvedTitle,
             resolvedArtists,
             resolvedAlbum
           );
+          if (!lyricsContent && stableSources.length > 0) {
+            const fallbackLyrics = await fetchFallbackLyrics(
+              { title: resolvedTitle, artist: resolvedArtists, album: resolvedAlbum },
+              stableSources
+            );
+            lyricsContent = fallbackLyrics?.lyrics || null;
+            if (lyricsContent && fallbackLyrics?.source) {
+              this.log(`Repaired ${filename}: Added lyrics via fallback source ${fallbackLyrics.source}.`);
+            }
+          }
           if (lyricsContent) {
             await fs.promises.writeFile(lrcPath, lyricsContent, 'utf8');
             this.log(`Repaired ${filename}: Added lyrics.`);
@@ -337,8 +353,25 @@ class LibraryService {
 
       if (coverMissing) {
         try {
-          const coverInfo = await resolveTrackCoverUrl(picId, source);
-          const coverUrl = coverInfo?.url || coverInfo?.data?.url;
+          let coverUrl = null;
+          try {
+            const coverInfo = await resolveTrackCoverUrl(picId, source);
+            coverUrl = coverInfo?.url || coverInfo?.data?.url || null;
+          } catch (error) {
+            this.log(`Primary cover fetch failed for ${filename}: ${error.message}`);
+          }
+
+          if (!coverUrl && stableSources.length > 0) {
+            const fallbackCover = await fetchFallbackCover(
+              { title: resolvedTitle, artist: resolvedArtists, album: resolvedAlbum },
+              stableSources
+            );
+            coverUrl = fallbackCover?.url || null;
+            if (coverUrl && fallbackCover?.source) {
+              this.log(`Repaired ${filename}: Added cover via fallback source ${fallbackCover.source}.`);
+            }
+          }
+
           if (coverUrl) {
             await downloadSimpleFile(coverUrl, coverPath);
             this.log(`Repaired ${filename}: Added cover.`);

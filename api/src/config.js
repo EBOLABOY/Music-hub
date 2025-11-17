@@ -26,6 +26,10 @@ const config = {
     source: 'qobuz',
     portalHost: 'music.gdstudio.xyz',
     portalVersion: '2025.11.4',
+    stableSources: (process.env.MUSIC_STABLE_SOURCES || 'netease,kuwo,joox,tidal')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean),
     pageSize: parseIntOrDefault(process.env.MUSIC_API_COUNT, 20),
     defaultBitrate: parseIntOrDefault(process.env.MUSIC_API_BITRATE, 999),
     userAgent:
