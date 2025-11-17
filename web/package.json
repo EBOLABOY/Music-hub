@@ -10,14 +10,24 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.9",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "lucide-react": "^0.330.0",
     "music-hub": "file:..",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.6.0"
+    "react-hot-toast": "^2.6.0",
+    "react-error-boundary": "^4.0.11",
+    "react-router-dom": "^6.22.0",
+    "tailwind-merge": "^2.2.1"
   },
   "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/react": "^18.3.7",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.22",
+    "typescript": "^5.6.3",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.14",
     "vite": "^5.1.3"

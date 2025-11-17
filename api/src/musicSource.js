@@ -1,8 +1,25 @@
 import axios from 'axios';
+import https from 'https';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import { URLSearchParams } from 'url';
 import config from './config.js';
 import { buildSearchSignature, buildUrlSignature } from './signature.js';
 import CloudflareCookieProvider from './cloudflareCookies.js';
-import { URLSearchParams } from 'url';
+
+const resolveProxyAgent = () => {
+  const proxyUrl =
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.ALL_PROXY ||
+    process.env.all_proxy;
+
+  if (!proxyUrl) {
+    return new https.Agent({ keepAlive: true });
+  }
+  return new HttpsProxyAgent(proxyUrl);
+};
+
+const agent = resolveProxyAgent();
 
 const http = axios.create({
   headers: {
@@ -11,7 +28,10 @@ const http = axios.create({
     Referer: 'https://music.gdstudio.xyz/',
     'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8'
   },
-  timeout: 10000
+  timeout: 10000,
+  proxy: false,
+  httpsAgent: agent,
+  httpAgent: agent
 });
 
 const cloudflareCookies = new CloudflareCookieProvider(config);
