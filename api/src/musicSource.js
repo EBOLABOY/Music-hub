@@ -163,33 +163,36 @@ export const resolveTrackUrl = async (trackId, source = 'qobuz') => {
     source
   };
 
-  // 优先走稳定下载线路
-  const downloadBase = config.musicSource.downloadApiBase || config.musicSource.apiBase;
-  const bitrateCandidates = [config.musicSource.defaultBitrate, 999, 320, 192, 128]
-    .filter(Boolean)
-    .filter((v, i, arr) => arr.indexOf(v) === i);
-
+  // qobuz 直接走官方接口获取直链，不再先访问稳定源
   const attempts = [];
-  for (const br of bitrateCandidates) {
-    await rateLimiter.consume();
-    const payload = new URLSearchParams({
-      ...baseParams,
-      br: String(br)
-    }).toString();
-    const { data } = await http.post(downloadBase, payload, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-      params: { callback: buildCallback() },
-      responseType: 'text'
-    });
-    const parsed = parseJSONP(data);
-    attempts.push({ br, resp: parsed });
-    const url = pickFirstUrl(parsed);
-    if (url) return parsed;
+  if (source !== 'qobuz') {
+    const downloadBase = config.musicSource.downloadApiBase || config.musicSource.apiBase;
+    const bitrateCandidates = [config.musicSource.defaultBitrate || 999].filter(Boolean);
+    for (const br of bitrateCandidates) {
+      await rateLimiter.consume();
+      const payload = new URLSearchParams({
+        ...baseParams,
+        br: String(br)
+      }).toString();
+      const { data } = await http.post(downloadBase, payload, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        params: { callback: buildCallback() },
+        responseType: 'text'
+      });
+      const parsed = parseJSONP(data);
+      attempts.push({ br, resp: parsed });
+      const url = pickFirstUrl(parsed);
+      if (url) return parsed;
+    }
   }
 
-  // fallback to旧接口
+  // fallback to旧接口（qobuz 直接使用这里）
   const resp = await apiRequest({ ...baseParams, br: config.musicSource.defaultBitrate });
   attempts.push({ br: config.musicSource.defaultBitrate, resp });
+  const fallbackUrl = pickFirstUrl(resp);
+  if (fallbackUrl) {
+    return { url: fallbackUrl, raw: resp, attempts };
+  }
   return { attempts, fallback: resp };
 };
 

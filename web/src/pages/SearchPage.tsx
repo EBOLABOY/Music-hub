@@ -4,7 +4,8 @@ import {
   useState,
   type ComponentType,
   type SVGProps,
-  type FormEvent
+  type FormEvent,
+  useEffect
 } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -37,6 +38,35 @@ type SearchState = {
   page: number;
 };
 
+const SEARCH_STATE_KEY = 'music-hub/search-state';
+const defaultSearchState: SearchState = {
+  query: '',
+  source: 'qobuz',
+  page: 1
+};
+
+const loadSavedSearchState = (): { state: SearchState; input: string } => {
+  if (typeof window === 'undefined') {
+    return { state: defaultSearchState, input: '' };
+  }
+  try {
+    const raw = window.localStorage.getItem(SEARCH_STATE_KEY);
+    if (!raw) {
+      return { state: defaultSearchState, input: '' };
+    }
+    const parsed = JSON.parse(raw);
+    const state: SearchState = {
+      query: parsed.query || '',
+      source: parsed.source || 'qobuz',
+      page: parsed.page || 1
+    };
+    const input = parsed.inputQuery || parsed.query || '';
+    return { state, input };
+  } catch (error) {
+    return { state: defaultSearchState, input: '' };
+  }
+};
+
 const normalizeTrackTitle = (track: TrackInfo | string | null | undefined): string => {
   if (!track) return '未命名';
   if (typeof track === 'string') return track;
@@ -53,12 +83,9 @@ const platformOptions: Array<{
 ];
 
 export function SearchPage() {
-  const [inputQuery, setInputQuery] = useState('');
-  const [searchParams, setSearchParams] = useState<SearchState>({
-    query: '',
-    source: 'qobuz',
-    page: 1
-  });
+  const initialSearchSnapshot = useMemo(loadSavedSearchState, []);
+  const [inputQuery, setInputQuery] = useState(initialSearchSnapshot.input);
+  const [searchParams, setSearchParams] = useState<SearchState>(initialSearchSnapshot.state);
   const [processingTracks, setProcessingTracks] = useState<Set<string>>(() => new Set());
 
   const queryClient = useQueryClient();
@@ -95,6 +122,12 @@ export function SearchPage() {
     },
     onError: (err: Error) => toast.error(err.message || '下载失败')
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const payload = { ...searchParams, inputQuery };
+    window.localStorage.setItem(SEARCH_STATE_KEY, JSON.stringify(payload));
+  }, [searchParams, inputQuery]);
 
   const handleSearchSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
