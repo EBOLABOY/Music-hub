@@ -21,6 +21,8 @@ const config = {
   musicSource: {
     timeEndpoint: process.env.MUSIC_TIME_ENDPOINT || 'https://www.ximalaya.com/revision/time',
     apiBase: process.env.MUSIC_API_BASE || 'https://music-api-us.gdstudio.xyz/api.php',
+    downloadApiBase:
+      process.env.MUSIC_DOWNLOAD_API_BASE || 'https://music-api.gdstudio.xyz/api.php',
     source: 'qobuz',
     portalHost: 'music.gdstudio.xyz',
     portalVersion: '2025.11.4',

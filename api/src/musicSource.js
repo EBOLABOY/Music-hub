@@ -116,17 +116,78 @@ export const searchTracks = async (query, source = 'qobuz') => {
   return normalizeResults(parsed, source);
 };
 
+const pickFirstUrl = (payload) => {
+  if (!payload) return null;
+  if (typeof payload === 'string') return payload || null;
+
+  if (typeof payload === 'object') {
+    const directUrl = payload.url || payload.playUrl;
+    if (typeof directUrl === 'string' && directUrl.trim()) {
+      return directUrl;
+    }
+
+    const data = payload.data;
+    if (typeof data === 'string' && data.trim()) return data;
+
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const found = pickFirstUrl(item);
+        if (found) return found;
+      }
+    } else if (typeof data === 'object' && data) {
+      const found = pickFirstUrl(data);
+      if (found) return found;
+    }
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const found = pickFirstUrl(item);
+      if (found) return found;
+    }
+  }
+
+  return null;
+};
+
 export const resolveTrackUrl = async (trackId, source = 'qobuz') => {
   if (!trackId) {
     throw new Error('Track id is required');
   }
-  const params = {
+
+  const baseParams = {
     types: 'url',
     id: trackId,
-    source,
-    br: config.musicSource.defaultBitrate
+    source
   };
-  return apiRequest(params);
+
+  // 优先走稳定下载线路
+  const downloadBase = config.musicSource.downloadApiBase || config.musicSource.apiBase;
+  const bitrateCandidates = [config.musicSource.defaultBitrate, 999, 320, 192, 128]
+    .filter(Boolean)
+    .filter((v, i, arr) => arr.indexOf(v) === i);
+
+  const attempts = [];
+  for (const br of bitrateCandidates) {
+    const payload = new URLSearchParams({
+      ...baseParams,
+      br: String(br)
+    }).toString();
+    const { data } = await http.post(downloadBase, payload, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      params: { callback: buildCallback() },
+      responseType: 'text'
+    });
+    const parsed = parseJSONP(data);
+    attempts.push({ br, resp: parsed });
+    const url = pickFirstUrl(parsed);
+    if (url) return parsed;
+  }
+
+  // fallback to旧接口
+  const resp = await apiRequest({ ...baseParams, br: config.musicSource.defaultBitrate });
+  attempts.push({ br: config.musicSource.defaultBitrate, resp });
+  return { attempts, fallback: resp };
 };
 
 export const resolveTrackCoverUrl = async (picId, source = 'qobuz') => {
