@@ -26,13 +26,6 @@ const FMT_EXTENSION_MAP = {
   '7': '.flac'
 };
 
-const COVER_MIME_MAP = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp'
-};
-
 const normalizeExtension = (ext) => {
   if (!ext) return '';
   return ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
@@ -124,11 +117,6 @@ const buildFilenameBase = (title, trackNumber) => {
   return formattedTrack ? `${formattedTrack} - ${safeTitle}` : safeTitle;
 };
 
-const detectCoverMimeType = (coverUrlOrPath) => {
-  const ext = path.extname(coverUrlOrPath || '').toLowerCase();
-  return COVER_MIME_MAP[ext] || 'image/jpeg';
-};
-
 const buildVorbisComments = (metadata) => {
   if (!metadata) return [];
   const comments = [];
@@ -155,7 +143,7 @@ const buildVorbisComments = (metadata) => {
   return comments;
 };
 
-const buildId3Tags = (metadata, coverBuffer, coverMime) => {
+const buildId3Tags = (metadata) => {
   if (!metadata) return null;
   const tags = {
     title: metadata.title || undefined,
@@ -167,14 +155,6 @@ const buildId3Tags = (metadata, coverBuffer, coverMime) => {
     trackNumber: metadata.trackNumber ? String(metadata.trackNumber) : undefined,
     partOfSet: metadata.discNumber ? String(metadata.discNumber) : undefined
   };
-  if (coverBuffer) {
-    tags.image = {
-      mime: coverMime || 'image/jpeg',
-      type: { id: 3, name: 'front cover' },
-      description: 'cover',
-      imageBuffer: coverBuffer
-    };
-  }
   Object.keys(tags).forEach((key) => {
     if (tags[key] === undefined || tags[key] === null) {
       delete tags[key];
@@ -293,7 +273,7 @@ class DownloadManager {
       }
     }
     try {
-      await this.applyAudioMetadata(destPath, metadata, coverAsset);
+      await this.applyAudioMetadata(destPath, metadata);
     } catch (error) {
       console.warn(`Failed to apply metadata for ${destPath}: ${error.message}`);
     }
@@ -333,29 +313,27 @@ class DownloadManager {
     }
     const resolvedExt = coverExt || '.jpg';
     const coverPath = path.join(finalDir, `cover${resolvedExt}`);
-    const buffer = await downloadSimpleFile(coverUrl, coverPath, { returnBuffer: true });
-    if (!buffer) {
+    const success = await downloadSimpleFile(coverUrl, coverPath);
+    if (!success) {
       return null;
     }
     return {
-      path: coverPath,
-      buffer,
-      mimeType: detectCoverMimeType(coverPath)
+      path: coverPath
     };
   }
 
-  async applyAudioMetadata(destPath, metadata, coverAsset) {
+  async applyAudioMetadata(destPath, metadata) {
     if (!metadata) return;
     const extension = path.extname(destPath).toLowerCase();
     if (extension === '.mp3') {
-      await this.writeId3Tags(destPath, metadata, coverAsset);
+      await this.writeId3Tags(destPath, metadata);
     } else if (extension === '.flac') {
-      await this.writeFlacMetadata(destPath, metadata, coverAsset);
+      await this.writeFlacMetadata(destPath, metadata);
     }
   }
 
-  async writeId3Tags(destPath, metadata, coverAsset) {
-    const tags = buildId3Tags(metadata, coverAsset?.buffer, coverAsset?.mimeType);
+  async writeId3Tags(destPath, metadata) {
+    const tags = buildId3Tags(metadata);
     if (!tags) return;
     await new Promise((resolve, reject) => {
       NodeID3.update(tags, destPath, (error) => {
@@ -365,50 +343,29 @@ class DownloadManager {
     });
   }
 
-  async writeFlacMetadata(destPath, metadata, coverAsset) {
+  async writeFlacMetadata(destPath, metadata) {
     const vorbisComments = buildVorbisComments(metadata);
-    const hasCover = Boolean(coverAsset?.buffer?.length);
-    if (!vorbisComments.length && !hasCover) return;
+    if (!vorbisComments.length) return;
 
     const tempPath = `${destPath}.tmp`;
     const backupPath = `${destPath}.bak`;
     const processor = new flac.Processor();
 
-    const shouldAppend = vorbisComments.length > 0 || hasCover;
+    const shouldAppend = vorbisComments.length > 0;
     let vorbisBlock = null;
-    let pictureBlock = null;
 
     processor.on('preprocess', function (mdb) {
       if (mdb.type === flac.Processor.MDB_TYPE_VORBIS_COMMENT) {
-        mdb.remove();
-      }
-      if (mdb.type === flac.Processor.MDB_TYPE_PICTURE) {
         mdb.remove();
       }
       if (mdb.isLast && shouldAppend) {
         mdb.isLast = false;
         if (vorbisComments.length > 0) {
           vorbisBlock = flac.data.MetaDataBlockVorbisComment.create(
-            !hasCover,
+            true,
             'music-hub',
             vorbisComments
           );
-        }
-        if (hasCover) {
-          pictureBlock = flac.data.MetaDataBlockPicture.create(
-            true,
-            3,
-            coverAsset.mimeType || 'image/jpeg',
-            '',
-            0,
-            0,
-            0,
-            0,
-            coverAsset.buffer
-          );
-          if (vorbisBlock) {
-            vorbisBlock.isLast = false;
-          }
         }
       }
     });
@@ -418,11 +375,7 @@ class DownloadManager {
         if (vorbisBlock) {
           this.push(vorbisBlock.publish());
         }
-        if (pictureBlock) {
-          this.push(pictureBlock.publish());
-        }
         vorbisBlock = null;
-        pictureBlock = null;
       }
     });
 
