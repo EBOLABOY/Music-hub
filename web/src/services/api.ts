@@ -57,6 +57,29 @@ export interface StartDownloadResponse {
   message?: string;
 }
 
+export interface MediaAlbum {
+  id: string;
+  name: string;
+  artist: string;
+  cover_path: string | null;
+  year: number | null;
+  created_at: string;
+}
+
+export interface MediaTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album_id: string;
+  duration: number;
+  format: string;
+  bitrate: number;
+}
+
+export interface AlbumDetail extends MediaAlbum {
+  tracks: MediaTrack[];
+}
+
 export const buildApiUrl = (path: string): string => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
@@ -115,6 +138,26 @@ export const api = {
     return fetchJson<{ success?: boolean }>(buildApiUrl('/api/library/scan'), {
       method: 'POST'
     });
+  },
+
+  getAlbums: () => {
+    return fetchJson<MediaAlbum[]>(buildApiUrl('/api/media/albums'));
+  },
+
+  getAlbumDetail: (id: string) => {
+    return fetchJson<AlbumDetail>(buildApiUrl(`/api/media/albums/${id}`));
+  },
+
+  getCoverUrl: (type: 'album' | 'track', id: string) => {
+    return buildApiUrl(`/api/media/cover/${type}/${id}`);
+  },
+
+  getStreamUrl: (trackId: string) => {
+    return buildApiUrl(`/api/media/stream/${trackId}`);
+  },
+
+  getLyricsUrl: (trackId: string) => {
+    return buildApiUrl(`/api/media/lyrics/${trackId}`);
   }
 };
 
