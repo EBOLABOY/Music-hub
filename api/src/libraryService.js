@@ -10,6 +10,7 @@ import {
 } from './utils.js';
 import { searchTracks, resolveTrackCoverUrl, resolveTrackLyrics } from './musicSource.js';
 import { fetchFallbackCover, fetchFallbackLyrics } from './fallbackAssets.js';
+import db from './db.js';
 
 const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav'];
 const normalizeString = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -276,6 +277,8 @@ class LibraryService {
       if (shouldRelocate) {
         await fs.promises.mkdir(targetDir, { recursive: true });
       }
+      const lyricsOutputPath = path.join(targetDir, `${safeTitle}.lrc`);
+      const coverOutputPath = path.join(targetDir, 'folder.jpg');
 
       const [coverInfo, lyricInfo] = await Promise.allSettled([
         resolveTrackCoverUrl(picId || trackId, source),
@@ -289,14 +292,12 @@ class LibraryService {
       const lyricsContent = lyricInfo.status === 'fulfilled' ? lyricInfo.value : null;
 
       if (lyricsContent) {
-        const lyricsPath = path.join(targetDir, `${safeTitle}.lrc`);
-        await fs.promises.writeFile(lyricsPath, lyricsContent, 'utf8');
+        await fs.promises.writeFile(lyricsOutputPath, lyricsContent, 'utf8');
       }
 
       if (coverUrl) {
-        const coverPath = path.join(targetDir, 'folder.jpg');
-        if (!(await fileExists(coverPath))) {
-          await downloadSimpleFile(coverUrl, coverPath);
+        if (!(await fileExists(coverOutputPath))) {
+          await downloadSimpleFile(coverUrl, coverOutputPath);
         }
       }
 
@@ -313,6 +314,29 @@ class LibraryService {
       } else {
         const decisionNote = relocationDecision.reason ? ` (${relocationDecision.reason})` : '';
         this.log(`SAFE Import: ${filename} kept in place${decisionNote}`);
+      }
+
+      const finalLyricsPath = (await fileExists(lyricsOutputPath)) ? lyricsOutputPath : null;
+      try {
+        const metaForDb =
+          metadata?.format && metadata?.format?.duration
+            ? metadata
+            : await musicMetadata.parseFile(finalAudioPath);
+        db.upsertTrack(
+          {
+            title: finalTitle,
+            artist: allArtists,
+            album: finalAlbum,
+            year: metaForDb?.common?.year || metadata?.common?.year || null,
+            duration: metaForDb?.format?.duration || 0,
+            format: metaForDb?.format?.container || path.extname(finalAudioPath).replace('.', ''),
+            bitrate: metaForDb?.format?.bitrate || 0
+          },
+          finalAudioPath,
+          finalLyricsPath
+        );
+      } catch (dbError) {
+        this.log(`DB Index warning for ${filename}: ${dbError.message}`);
       }
     } catch (error) {
       this.log(`ERROR importing ${filename}: ${error.message}`);
@@ -454,6 +478,26 @@ class LibraryService {
         } catch (error) {
           this.log(`Failed to download cover for ${filename}: ${error.message}`);
         }
+      }
+
+      try {
+        const metaForDb = parsedMeta || (await musicMetadata.parseFile(filePath));
+        const finalLyricsPath = (await fileExists(lrcPath)) ? lrcPath : null;
+        db.upsertTrack(
+          {
+            title,
+            artist,
+            album,
+            year: metaForDb?.common?.year || null,
+            duration: metaForDb?.format?.duration || 0,
+            format: metaForDb?.format?.container || path.extname(filePath).replace('.', ''),
+            bitrate: metaForDb?.format?.bitrate || 0
+          },
+          filePath,
+          finalLyricsPath
+        );
+      } catch (dbError) {
+        this.log(`DB Index warning: ${dbError.message}`);
       }
     } catch (error) {
       this.log(`ERROR repairing ${filename}: ${error.message}`);

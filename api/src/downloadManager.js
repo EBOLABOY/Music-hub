@@ -4,7 +4,9 @@ import axios from 'axios';
 import { pipeline } from 'stream/promises';
 import NodeID3 from 'node-id3';
 import flac from 'flac-metadata';
+import * as musicMetadata from 'music-metadata';
 import { sanitizeFilename, downloadSimpleFile } from './utils.js';
+import db from './db.js';
 
 const DEFAULT_EXTENSION = '.mp3';
 const CONTENT_TYPE_EXTENSION_MAP = {
@@ -348,6 +350,42 @@ class DownloadManager {
       await this.applyAudioMetadata(destPath, metadata);
     } catch (error) {
       console.warn(`Failed to apply metadata for ${destPath}: ${error.message}`);
+    }
+
+    try {
+      let parsedStats = {
+        duration: 0,
+        bitrate: 0,
+        format: path.extname(destPath).replace('.', '') || 'mp3'
+      };
+      try {
+        const parsed = await musicMetadata.parseFile(destPath);
+        parsedStats = {
+          duration: parsed?.format?.duration || 0,
+          bitrate: parsed?.format?.bitrate || 0,
+          format:
+            parsed?.format?.container ||
+            parsed?.format?.codec ||
+            path.extname(destPath).replace('.', '') ||
+            'mp3'
+        };
+      } catch (metaError) {
+        console.warn(`[Indexer] Failed to parse local metadata for ${destPath}: ${metaError.message}`);
+      }
+
+      const trackMeta = {
+        title: metadata?.title || path.basename(destPath, path.extname(destPath)),
+        artist: metadata?.artist || 'Unknown Artist',
+        album: metadata?.album || 'Unknown Album',
+        year: metadata?.releaseYear || null,
+        duration: parsedStats.duration || metadata?.duration || 0,
+        format: parsedStats.format || path.extname(destPath).replace('.', ''),
+        bitrate: parsedStats.bitrate || metadata?.bitrate || 0
+      };
+      db.upsertTrack(trackMeta, destPath, lyricsPath);
+      console.log(`[Indexer] Added to DB: ${trackMeta.title} (${taskId})`);
+    } catch (dbError) {
+      console.warn(`[Indexer] Failed to index ${destPath}: ${dbError.message}`);
     }
 
     this.taskStore.updateTask(taskId, {
