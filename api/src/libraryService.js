@@ -294,7 +294,7 @@ class LibraryService {
       }
 
       if (coverUrl) {
-        const coverPath = path.join(targetDir, 'cover.jpg');
+        const coverPath = path.join(targetDir, 'folder.jpg');
         if (!(await fileExists(coverPath))) {
           await downloadSimpleFile(coverUrl, coverPath);
         }
@@ -323,7 +323,7 @@ class LibraryService {
     const filename = path.basename(filePath);
     const audioName = filename.replace(/\.[^/.]+$/, '');
     const lrcPath = path.join(directoryPath, `${audioName}.lrc`);
-    const coverPath = path.join(directoryPath, 'cover.jpg');
+    const coverPath = path.join(directoryPath, 'folder.jpg');
 
     const lrcMissing = !(await fileExists(lrcPath));
     const coverMissing = !(await fileExists(coverPath));

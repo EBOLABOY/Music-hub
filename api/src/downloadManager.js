@@ -384,7 +384,7 @@ class DownloadManager {
       // ignore parsing errors and fallback to jpg
     }
     const resolvedExt = coverExt || '.jpg';
-    const coverPath = path.join(finalDir, `cover${resolvedExt}`);
+    const coverPath = path.join(finalDir, `folder${resolvedExt}`);
     const success = await downloadSimpleFile(coverUrl, coverPath);
     if (!success) {
       return null;
