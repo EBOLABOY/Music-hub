@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import config from './config.js';
 
 class CloudflareCookieProvider {
   constructor(config) {
@@ -58,6 +59,36 @@ class CloudflareCookieProvider {
         waitUntil: 'domcontentloaded',
         timeout: this.timeoutMs
       });
+
+      try {
+        // Wait briefly for mkPlayer to appear in the page context, not fatal on timeout
+        await page.waitForFunction(
+          () => typeof window !== 'undefined' && typeof window.mkPlayer !== 'undefined',
+          null,
+          { timeout: 5000 }
+        );
+        const detectedVersion = await page.evaluate(() => {
+          try {
+            return window?.mkPlayer?.version || null;
+          } catch (e) {
+            return null;
+          }
+        });
+        if (detectedVersion) {
+          if (config.musicSource.portalVersion !== detectedVersion) {
+            console.info(`[Auto-Version] Detected & Updated: ${detectedVersion}`);
+          } else {
+            console.info(`[Auto-Version] Detected existing version: ${detectedVersion}`);
+          }
+          config.musicSource.portalVersion = detectedVersion;
+        } else {
+          console.warn(
+            `[Auto-Version] Failed to detect, using config default: ${config.musicSource.portalVersion}`
+          );
+        }
+      } catch (verError) {
+        console.warn(`[Auto-Version] Detection error: ${verError.message}`);
+      }
       if (this.waitAfterLoadMs > 0) {
         await page.waitForTimeout(this.waitAfterLoadMs);
       }

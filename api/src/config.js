@@ -25,7 +25,7 @@ const config = {
       process.env.MUSIC_DOWNLOAD_API_BASE || 'https://music-api.gdstudio.xyz/api.php',
     source: 'qobuz',
     portalHost: 'music.gdstudio.xyz',
-    portalVersion: '2025.11.4',
+    portalVersion: process.env.MUSIC_PORTAL_VERSION || '2025.11.4',
     stableSources: (process.env.MUSIC_STABLE_SOURCES || 'netease,kuwo,joox,tidal')
       .split(',')
       .map((item) => item.trim())
