@@ -6,10 +6,14 @@ import { Toaster } from 'react-hot-toast';
 
 import { Button } from '@/components/ui/Button';
 import { MainLayout, type ThemeMode } from '@/components/layout/MainLayout';
+import { HomePage } from '@/pages/HomePage';
 import { DownloadsPage } from '@/pages/DownloadsPage';
 import { LibraryPage } from '@/pages/LibraryPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { SearchPage } from '@/pages/SearchPage';
+import { PlaylistsPage } from '@/pages/PlaylistsPage';
+import { PlaylistDetailPage } from '@/pages/PlaylistDetailPage';
+import { PlayerProvider } from '@/contexts/PlayerContext';
 
 const queryClient = new QueryClient();
 
@@ -58,23 +62,28 @@ function App() {
         FallbackComponent={AppErrorFallback}
         onReset={() => window.location.reload()}
       >
-        <BrowserRouter>
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              className: 'dark:bg-gray-800 dark:text-white',
-              style: { borderRadius: '10px' }
-            }}
-          />
-          <Routes>
-            <Route path="/" element={<MainLayout theme={theme} toggleTheme={toggleTheme} />}>
-              <Route index element={<SearchPage />} />
-              <Route path="downloads" element={<DownloadsPage />} />
-              <Route path="library" element={<LibraryPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+        <PlayerProvider>
+          <BrowserRouter>
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                className: 'dark:bg-gray-800 dark:text-white',
+                style: { borderRadius: '10px' }
+              }}
+            />
+            <Routes>
+              <Route path="/" element={<MainLayout theme={theme} toggleTheme={toggleTheme} />}>
+                <Route index element={<HomePage />} />
+                <Route path="search" element={<SearchPage />} />
+                <Route path="downloads" element={<DownloadsPage />} />
+                <Route path="library" element={<LibraryPage />} />
+                <Route path="playlists" element={<PlaylistsPage />} />
+                <Route path="playlists/:id" element={<PlaylistDetailPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </PlayerProvider>
       </ErrorBoundary>
     </QueryClientProvider>
   );

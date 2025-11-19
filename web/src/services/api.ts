@@ -64,6 +64,7 @@ export interface MediaAlbum {
   cover_path: string | null;
   year: number | null;
   created_at: string;
+  trackCount?: number;
 }
 
 export interface MediaTrack {
@@ -78,6 +79,20 @@ export interface MediaTrack {
 
 export interface AlbumDetail extends MediaAlbum {
   tracks: MediaTrack[];
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface PlaylistTrack extends MediaTrack {
+  added_at: string;
+}
+
+export interface PlaylistDetail extends Playlist {
+  tracks: PlaylistTrack[];
 }
 
 export const buildApiUrl = (path: string): string => {
@@ -108,6 +123,22 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
 }
 
 export const api = {
+  search: (query: string, source: SearchSource = 'qobuz', page = 1) => {
+    return api.searchTracks(query, source, page);
+  },
+
+  downloadTrack: (trackId: string) => {
+    return Promise.reject(new Error("Use startDownload with full payload"));
+  },
+
+  startScan: () => {
+    return api.runScanner();
+  },
+
+  getAlbum: (id: string) => {
+    return api.getAlbumDetail(id);
+  },
+
   searchTracks: (query: string, source: SearchSource, page = 1) => {
     const params = new URLSearchParams({
       q: query,
@@ -158,6 +189,42 @@ export const api = {
 
   getLyricsUrl: (trackId: string) => {
     return buildApiUrl(`/api/media/lyrics/${trackId}`);
+  },
+
+  getPlaylists: () => {
+    return fetchJson<Playlist[]>(buildApiUrl('/api/playlists'));
+  },
+
+  createPlaylist: (name: string) => {
+    return fetchJson<Playlist>(buildApiUrl('/api/playlists'), {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+  },
+
+  deletePlaylist: (id: string) => {
+    return fetchJson<{ success: boolean }>(buildApiUrl(`/api/playlists/${id}`), {
+      method: 'DELETE'
+    });
+  },
+
+  getPlaylist: (id: string) => {
+    return fetchJson<PlaylistDetail>(buildApiUrl(`/api/playlists/${id}`));
+  },
+
+  addTrackToPlaylist: (playlistId: string, trackId: string) => {
+    return fetchJson<{ success: boolean }>(buildApiUrl(`/api/playlists/${playlistId}/tracks`), {
+      method: 'POST',
+      body: JSON.stringify({ trackId })
+    });
+  },
+
+  removeTrackFromPlaylist: (playlistId: string, trackId: string) => {
+    return fetchJson<{ success: boolean }>(
+      buildApiUrl(`/api/playlists/${playlistId}/tracks/${trackId}`),
+      {
+        method: 'DELETE'
+      }
+    );
   }
 };
-

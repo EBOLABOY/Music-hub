@@ -46,6 +46,8 @@ db.exec(`
     bitrate INTEGER,
     lyrics_path TEXT,
     created_at TEXT,
+    track_number INTEGER,
+    disc_number INTEGER DEFAULT 1,
     FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE CASCADE
   );
 
@@ -53,7 +55,41 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist);
   CREATE INDEX IF NOT EXISTS idx_tracks_created ON tracks(created_at);
   CREATE INDEX IF NOT EXISTS idx_albums_created ON albums(created_at);
+
+  CREATE TABLE IF NOT EXISTS playlists (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS playlist_tracks (
+    playlist_id TEXT,
+    track_id TEXT,
+    added_at TEXT,
+    PRIMARY KEY (playlist_id, track_id),
+    FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+    FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_playlist_tracks_added ON playlist_tracks(added_at);
 `);
+
+const migrate = () => {
+  try {
+    db.prepare('ALTER TABLE tracks ADD COLUMN track_number INTEGER').run();
+    console.log('Migrated: Added track_number column');
+  } catch {
+    // column already exists
+  }
+  try {
+    db.prepare('ALTER TABLE tracks ADD COLUMN disc_number INTEGER DEFAULT 1').run();
+    console.log('Migrated: Added disc_number column');
+  } catch {
+    // column already exists
+  }
+};
+
+migrate();
 
 class MusicDatabase {
   getOrCreateAlbum(name, artist, coverPath, year) {
@@ -96,7 +132,17 @@ class MusicDatabase {
     if (!filePath) {
       throw new Error('filePath is required for upsertTrack');
     }
-    const { title, artist, album: albumName, duration, bitrate, format, year } = metadata || {};
+    const {
+      title,
+      artist,
+      album: albumName,
+      duration,
+      bitrate,
+      format,
+      year,
+      trackNumber,
+      discNumber
+    } = metadata || {};
     const dir = path.dirname(filePath);
     let coverPath = path.join(dir, 'folder.jpg');
     if (!fs.existsSync(coverPath)) {
@@ -116,8 +162,34 @@ class MusicDatabase {
     const now = new Date().toISOString();
 
     const stmt = db.prepare(`
-      INSERT INTO tracks (id, title, artist, album_id, file_path, duration, format, bitrate, lyrics_path, created_at)
-      VALUES (@id, @title, @artist, @albumId, @filePath, @duration, @format, @bitrate, @lyricsPath, @createdAt)
+      INSERT INTO tracks (
+        id,
+        title,
+        artist,
+        album_id,
+        file_path,
+        duration,
+        format,
+        bitrate,
+        lyrics_path,
+        track_number,
+        disc_number,
+        created_at
+      )
+      VALUES (
+        @id,
+        @title,
+        @artist,
+        @albumId,
+        @filePath,
+        @duration,
+        @format,
+        @bitrate,
+        @lyricsPath,
+        @trackNumber,
+        @discNumber,
+        @createdAt
+      )
       ON CONFLICT(file_path) DO UPDATE SET
         title=excluded.title,
         artist=excluded.artist,
@@ -125,7 +197,9 @@ class MusicDatabase {
         lyrics_path=excluded.lyrics_path,
         duration=excluded.duration,
         bitrate=excluded.bitrate,
-        format=excluded.format
+        format=excluded.format,
+        track_number=excluded.track_number,
+        disc_number=excluded.disc_number
     `);
 
     stmt.run({
@@ -138,6 +212,8 @@ class MusicDatabase {
       format: format || path.extname(filePath).replace('.', '') || 'mp3',
       bitrate: bitrate || 0,
       lyricsPath: lyricsPath || null,
+      trackNumber: trackNumber ?? null,
+      discNumber: discNumber ?? 1,
       createdAt: now
     });
 
@@ -153,7 +229,9 @@ class MusicDatabase {
   }
 
   getAlbumTracks(albumId) {
-    return db.prepare('SELECT * FROM tracks WHERE album_id = ? ORDER BY title ASC').all(albumId);
+    return db
+      .prepare('SELECT * FROM tracks WHERE album_id = ? ORDER BY disc_number ASC, track_number ASC, title ASC')
+      .all(albumId);
   }
 
   getAllTracks(limit = 500) {

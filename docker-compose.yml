@@ -1,6 +1,6 @@
 x-app-env: &app-env
   PORT: 4000
-  DOWNLOAD_DIR: /vol2/1000/Music
+  DOWNLOAD_DIR: /downloads
   TASK_CLEANUP_MS: 0
   MUSIC_API_COUNT: 20
   MUSIC_API_BITRATE: 999
@@ -16,6 +16,6 @@ services:
     environment:
       <<: *app-env
     volumes:
-      - /vol2/1000/Music:/vol2/1000/Music
+      - ./downloads:/downloads
     ports:
       - "4000:4000"

@@ -11,6 +11,8 @@ import DownloadManager from './downloadManager.js';
 import LibraryService from './libraryService.js';
 import streamRoutes from './streamRoutes.js';
 
+import playlistRoutes from './playlistRoutes.js';
+
 const app = express();
 const taskStore = new TaskStore();
 const libraryService = new LibraryService(config);
@@ -24,6 +26,7 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan(config.env === 'production' ? 'combined' : 'dev'));
 app.use('/api/media', streamRoutes);
+app.use('/api/playlists', playlistRoutes);
 
 app.use('/api', createRouter({ taskStore, downloadManager, libraryService, config }));
 
@@ -58,3 +61,5 @@ process.on('SIGTERM', () => {
   console.log('Shutting down server');
   server.close(() => process.exit(0));
 });
+
+// Server ready
