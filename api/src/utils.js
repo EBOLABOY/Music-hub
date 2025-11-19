@@ -68,7 +68,8 @@ export const pickBetterMatch = (matchA, matchB, title, artist) => {
   return scoreA > scoreB ? matchA : matchB;
 };
 
-export const findBestFuzzyMatch = (results, searchQuery) => {
+export const findBestFuzzyMatch = (results, searchQuery, options = {}) => {
+  const { returnScore = false } = options;
   if (!Array.isArray(results) || !searchQuery) return null;
   const normalizedQuery = normalize(searchQuery);
   if (!normalizedQuery) return null;
@@ -106,6 +107,10 @@ export const findBestFuzzyMatch = (results, searchQuery) => {
 
   if (bestScore < 2) {
     return null;
+  }
+
+  if (returnScore) {
+    return { match: bestMatch, score: bestScore };
   }
 
   return bestMatch;

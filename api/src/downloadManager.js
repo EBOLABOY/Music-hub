@@ -26,6 +26,11 @@ const FMT_EXTENSION_MAP = {
   '7': '.flac'
 };
 
+const DOWNLOAD_TIMEOUT_MS = 60000;
+const MAX_DOWNLOAD_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+const FATAL_STATUS_CODES = new Set([403, 404, 410]);
+
 const normalizeExtension = (ext) => {
   if (!ext) return '';
   return ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
@@ -116,6 +121,8 @@ const buildFilenameBase = (title, trackNumber) => {
   const formattedTrack = formatNumber(trackNumber);
   return formattedTrack ? `${formattedTrack} - ${safeTitle}` : safeTitle;
 };
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const buildVorbisComments = (metadata) => {
   if (!metadata) return [];
@@ -215,44 +222,109 @@ class DownloadManager {
     await fs.promises.mkdir(finalDir, { recursive: true });
     this.taskStore.updateTask(taskId, { status: 'downloading', progress: 0 });
 
-    const response = await axios({
-      url: audioUrl,
-      method: 'GET',
-      responseType: 'stream',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        Referer: 'https://music.gdstudio.xyz/'
-      },
-      timeout: 30000
-    });
+    let destPath = null;
+    let finalFilename = null;
+    let downloadSuccess = false;
+    let lastError = null;
 
-    const resolvedExtension = resolveExtension({
-      headers: response.headers,
-      downloadUrl: audioUrl,
-      requestedFilename: `${filenameBase}${DEFAULT_EXTENSION}`
-    });
-    const finalFilename = `${filenameBase}${resolvedExtension}`;
-    const destPath = path.join(finalDir, finalFilename);
-
-    const totalBytes = Number(response.headers['content-length'] || 0);
-    let downloaded = 0;
-
-    response.data.on('data', (chunk) => {
-      downloaded += chunk.length;
-      if (totalBytes > 0) {
-        const progressFraction = downloaded / totalBytes;
-        this.taskStore.updateTask(taskId, { progress: progressFraction });
+    for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES && !downloadSuccess; attempt += 1) {
+      if (attempt > 1) {
+        console.warn(
+          `[DownloadManager] Retrying task ${taskId} (${attempt}/${MAX_DOWNLOAD_RETRIES}) after failure`
+        );
+        this.taskStore.updateTask(taskId, { progress: 0 });
+        if (destPath) {
+          await fs.promises.rm(destPath, { force: true }).catch(() => {});
+        }
+        await delay(RETRY_DELAY_MS);
       }
-    });
 
-    await new Promise((resolve, reject) => {
-      const fileStream = fs.createWriteStream(destPath);
-      response.data.pipe(fileStream);
-      fileStream.on('finish', resolve);
-      fileStream.on('error', reject);
-      response.data.on('error', reject);
-    });
+      let response = null;
+      let attemptDestPath = null;
+      try {
+        response = await axios({
+          url: audioUrl,
+          method: 'GET',
+          responseType: 'stream',
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+            Referer: 'https://music.gdstudio.xyz/'
+          },
+          timeout: DOWNLOAD_TIMEOUT_MS
+        });
+
+        const resolvedExtension = resolveExtension({
+          headers: response.headers,
+          downloadUrl: audioUrl,
+          requestedFilename: `${filenameBase}${DEFAULT_EXTENSION}`
+        });
+        finalFilename = `${filenameBase}${resolvedExtension}`;
+        attemptDestPath = path.join(finalDir, finalFilename);
+        destPath = attemptDestPath;
+
+        const totalBytes = Number(response.headers['content-length'] || 0);
+        let downloaded = 0;
+
+        response.data.on('data', (chunk) => {
+          downloaded += chunk.length;
+          if (totalBytes > 0) {
+            const progressFraction = downloaded / totalBytes;
+            this.taskStore.updateTask(taskId, { progress: progressFraction });
+          }
+        });
+
+        await new Promise((resolve, reject) => {
+          const fileStream = fs.createWriteStream(attemptDestPath);
+          const abort = (error) => {
+            if (error) {
+              response.data.destroy(error);
+              fileStream.destroy(error);
+            }
+            reject(error);
+          };
+
+          response.data.pipe(fileStream);
+          fileStream.on('finish', () => {
+            if (totalBytes > 0) {
+              const bytesWritten =
+                typeof fileStream.bytesWritten === 'number' ? fileStream.bytesWritten : downloaded;
+              if (bytesWritten < totalBytes) {
+                return abort(
+                  new Error(
+                    `Download incomplete: expected ${totalBytes} bytes, received ${bytesWritten}`
+                  )
+                );
+              }
+            }
+            return resolve();
+          });
+          fileStream.on('error', abort);
+          response.data.on('error', abort);
+        });
+
+        downloadSuccess = true;
+      } catch (error) {
+        lastError = error;
+        const cleanupTarget = attemptDestPath || destPath;
+        if (cleanupTarget) {
+          await fs.promises.rm(cleanupTarget, { force: true }).catch(() => {});
+        }
+        if (error.response && FATAL_STATUS_CODES.has(error.response.status)) {
+          throw new Error(`Fatal server response: ${error.response.status}`);
+        }
+      } finally {
+        if (response?.data && !response.data.destroyed) {
+          response.data.destroy();
+        }
+      }
+    }
+
+    if (!downloadSuccess) {
+      throw new Error(
+        `Download failed after ${MAX_DOWNLOAD_RETRIES} attempts. Last error: ${lastError?.message || 'unknown'}`
+      );
+    }
 
     let lyricsPath = null;
     if (lyricsContent) {
@@ -349,33 +421,62 @@ class DownloadManager {
 
     const tempPath = `${destPath}.tmp`;
     const backupPath = `${destPath}.bak`;
-    const processor = new flac.Processor();
+    const processor = new flac.Processor({ parseMetaDataBlocks: true });
 
     const shouldAppend = vorbisComments.length > 0;
-    let vorbisBlock = null;
+    const overriddenKeys = new Set(
+      vorbisComments
+        .map((comment) => comment.split('=')[0]?.trim().toUpperCase())
+        .filter(Boolean)
+    );
+    const preservedComments = [];
+    let vendorString = null;
+    let appendAfterCurrentBlock = false;
+    let appended = false;
 
     processor.on('preprocess', function (mdb) {
       if (mdb.type === flac.Processor.MDB_TYPE_VORBIS_COMMENT) {
         mdb.remove();
       }
       if (mdb.isLast && shouldAppend) {
+        appendAfterCurrentBlock = true;
         mdb.isLast = false;
-        if (vorbisComments.length > 0) {
-          vorbisBlock = flac.data.MetaDataBlockVorbisComment.create(
-            true,
-            'music-hub',
-            vorbisComments
-          );
-        }
+      } else {
+        appendAfterCurrentBlock = false;
       }
     });
 
     processor.on('postprocess', function (mdb) {
-      if (mdb.isLast) {
-        if (vorbisBlock) {
-          this.push(vorbisBlock.publish());
+      if (mdb.type === flac.Processor.MDB_TYPE_VORBIS_COMMENT && Array.isArray(mdb.comments)) {
+        if (!vendorString && typeof mdb.vendor === 'string' && mdb.vendor.trim()) {
+          vendorString = mdb.vendor;
         }
-        vorbisBlock = null;
+        for (const comment of mdb.comments) {
+          const separatorIndex = comment.indexOf('=');
+          if (separatorIndex === -1) {
+            preservedComments.push(comment);
+            continue;
+          }
+          const key = comment.slice(0, separatorIndex).trim().toUpperCase();
+          if (!overriddenKeys.has(key)) {
+            preservedComments.push(comment);
+          }
+        }
+      }
+
+      if (appendAfterCurrentBlock && shouldAppend && !appended) {
+        const mergedComments = [...preservedComments, ...vorbisComments];
+        if (mergedComments.length) {
+          const vendorToUse = vendorString?.trim() || 'music-hub';
+          const mergedBlock = flac.data.MetaDataBlockVorbisComment.create(
+            true,
+            vendorToUse,
+            mergedComments
+          );
+          this.push(mergedBlock.publish());
+        }
+        appended = true;
+        appendAfterCurrentBlock = false;
       }
     });
 

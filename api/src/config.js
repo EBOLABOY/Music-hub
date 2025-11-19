@@ -45,6 +45,11 @@ const config = {
       .map((arg) => arg.trim())
       .filter(Boolean),
     timeoutMs: parseIntOrDefault(process.env.CF_NAVIGATION_TIMEOUT_MS, 45000)
+  },
+  library: {
+    allowImportReorg: (process.env.LIBRARY_ALLOW_IMPORT_REORG || '').toLowerCase() === 'true',
+    minPlanScore: parseIntOrDefault(process.env.LIBRARY_MIN_PLAN_SCORE, 2),
+    fuzzyMatchThreshold: parseIntOrDefault(process.env.LIBRARY_FUZZY_THRESHOLD, 4)
   }
 };
 

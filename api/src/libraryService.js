@@ -12,6 +12,7 @@ import { searchTracks, resolveTrackCoverUrl, resolveTrackLyrics } from './musicS
 import { fetchFallbackCover, fetchFallbackLyrics } from './fallbackAssets.js';
 
 const AUDIO_EXTENSIONS = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.wav'];
+const normalizeString = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const fileExists = async (targetPath) => {
   try {
@@ -31,6 +32,12 @@ class LibraryService {
     this.stableSources = Array.isArray(config?.musicSource?.stableSources)
       ? config.musicSource.stableSources
       : [];
+    const libraryConfig = config?.library || {};
+    this.allowImportReorg = Boolean(libraryConfig.allowImportReorg);
+    this.minPlanScore = Number.isFinite(libraryConfig.minPlanScore) ? libraryConfig.minPlanScore : 2;
+    this.fuzzyScoreThreshold = Number.isFinite(libraryConfig.fuzzyMatchThreshold)
+      ? libraryConfig.fuzzyMatchThreshold
+      : 4;
 
     if (!this.downloadDir) {
       console.warn('DOWNLOAD_DIR is not set. Library service will remain disabled.');
@@ -121,6 +128,57 @@ class LibraryService {
     };
   }
 
+  _scoreMetadataMatch(candidate, title, artist) {
+    if (!candidate || !title || !artist) {
+      return 0;
+    }
+    const normalizedTitle = normalizeString(title);
+    const normalizedArtist = normalizeString(Array.isArray(artist) ? artist.join(' ') : artist);
+    if (!normalizedTitle || !normalizedArtist) {
+      return 0;
+    }
+    const candidateTitle = normalizeString(candidate?.name || candidate?.title);
+    const candidateArtistSource = Array.isArray(candidate?.artist)
+      ? candidate.artist.join(' ')
+      : candidate?.artist;
+    const candidateArtist = normalizeString(candidateArtistSource);
+    if (!candidateTitle || !candidateArtist) {
+      return 0;
+    }
+    if (candidateTitle === normalizedTitle && candidateArtist.includes(normalizedArtist)) {
+      return 2;
+    }
+    if (candidateArtist.includes(normalizedArtist)) {
+      return 1;
+    }
+    return 0;
+  }
+
+  _shouldRelocateImport({ planUsed, planScore, fuzzyScore }) {
+    if (!this.allowImportReorg) {
+      return { allowed: false, reason: 'auto-import disabled' };
+    }
+    if (planUsed === 'A') {
+      if (planScore >= this.minPlanScore) {
+        return { allowed: true, reason: null };
+      }
+      return {
+        allowed: false,
+        reason: `plan A confidence ${planScore} < ${this.minPlanScore}`
+      };
+    }
+    if (planUsed === 'B') {
+      if (fuzzyScore >= this.fuzzyScoreThreshold) {
+        return { allowed: true, reason: null };
+      }
+      return {
+        allowed: false,
+        reason: `plan B score ${fuzzyScore} < ${this.fuzzyScoreThreshold}`
+      };
+    }
+    return { allowed: false, reason: 'unknown import plan' };
+  }
+
   async processMessyFile(filePath) {
     const filename = path.basename(filePath);
     this.log(`Importing: ${filename}`);
@@ -143,6 +201,7 @@ class LibraryService {
 
       let match = null;
       let planUsed = null;
+      let fuzzyScore = 0;
       let title = parsedTitle;
       let artist = parsedArtist;
       let album = parsedAlbum;
@@ -168,8 +227,10 @@ class LibraryService {
         );
         const { qobuz, netease } = await this._fetchDualResults(searchQuery);
         const combined = [...(qobuz || []).slice(0, 5), ...(netease || []).slice(0, 5)];
-        match = findBestFuzzyMatch(combined, searchQuery);
-        if (match) {
+        const fuzzyResult = findBestFuzzyMatch(combined, searchQuery, { returnScore: true });
+        if (fuzzyResult?.match) {
+          match = fuzzyResult.match;
+          fuzzyScore = fuzzyResult.score;
           planUsed = 'B';
           artist = Array.isArray(match.artist) ? match.artist.join(', ') : match.artist || artist;
           album = match.album || match.album_name || album || 'Unknown Album';
@@ -184,6 +245,7 @@ class LibraryService {
 
       this.log(`Matched via Plan ${planUsed || 'A/B'}: ${filename}`);
 
+      const planScore = planUsed === 'A' ? this._scoreMetadataMatch(match, parsedTitle, parsedArtist) : 0;
       const trackId = match.id || match.trackId;
       const source = match.source || 'qobuz';
       const picId = match.pic_id || match.picId || trackId;
@@ -203,6 +265,17 @@ class LibraryService {
       const safeArtist = sanitizeFilename(primaryArtist || 'Unknown Artist');
       const safeAlbum = sanitizeFilename(finalAlbum || 'Unknown Album');
       const safeTitle = sanitizeFilename(finalTitle || `track-${trackId}`);
+      const relocationDecision = this._shouldRelocateImport({
+        planUsed: planUsed || 'A',
+        planScore,
+        fuzzyScore
+      });
+      const shouldRelocate = relocationDecision.allowed;
+      const originalDir = path.dirname(filePath);
+      const targetDir = shouldRelocate ? path.join(this.downloadDir, safeArtist, safeAlbum) : originalDir;
+      if (shouldRelocate) {
+        await fs.promises.mkdir(targetDir, { recursive: true });
+      }
 
       const [coverInfo, lyricInfo] = await Promise.allSettled([
         resolveTrackCoverUrl(picId || trackId, source),
@@ -215,30 +288,32 @@ class LibraryService {
           : null;
       const lyricsContent = lyricInfo.status === 'fulfilled' ? lyricInfo.value : null;
 
-      const finalDir = path.join(this.downloadDir, safeArtist, safeAlbum);
-      await fs.promises.mkdir(finalDir, { recursive: true });
-
       if (lyricsContent) {
-        const lyricsPath = path.join(finalDir, `${safeTitle}.lrc`);
+        const lyricsPath = path.join(targetDir, `${safeTitle}.lrc`);
         await fs.promises.writeFile(lyricsPath, lyricsContent, 'utf8');
       }
 
       if (coverUrl) {
-        const coverPath = path.join(finalDir, 'cover.jpg');
+        const coverPath = path.join(targetDir, 'cover.jpg');
         if (!(await fileExists(coverPath))) {
           await downloadSimpleFile(coverUrl, coverPath);
         }
       }
 
-      const extension = path.extname(filePath);
-      let finalAudioPath = path.join(finalDir, `${safeTitle}${extension}`);
-      if (await fileExists(finalAudioPath)) {
-        const timestamp = Date.now();
-        finalAudioPath = path.join(finalDir, `${safeTitle}-${timestamp}${extension}`);
+      let finalAudioPath = filePath;
+      if (shouldRelocate) {
+        const extension = path.extname(filePath);
+        finalAudioPath = path.join(targetDir, `${safeTitle}${extension}`);
+        if (await fileExists(finalAudioPath)) {
+          const timestamp = Date.now();
+          finalAudioPath = path.join(targetDir, `${safeTitle}-${timestamp}${extension}`);
+        }
+        await fs.promises.rename(filePath, finalAudioPath);
+        this.log(`SUCCESS: Imported ${filename} -> ${finalAudioPath}`);
+      } else {
+        const decisionNote = relocationDecision.reason ? ` (${relocationDecision.reason})` : '';
+        this.log(`SAFE Import: ${filename} kept in place${decisionNote}`);
       }
-      await fs.promises.rename(filePath, finalAudioPath);
-
-      this.log(`SUCCESS: Imported ${filename} -> ${finalAudioPath}`);
     } catch (error) {
       this.log(`ERROR importing ${filename}: ${error.message}`);
     }
