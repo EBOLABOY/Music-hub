@@ -114,7 +114,7 @@ export function HomePage() {
                 <Link to="/downloads">
                     <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
                         <CardContent className="p-6 flex items-center gap-4">
-                            <div className="p-3 bg-blue-500/10 rounded-full text-blue-500">
+                            <div className="p-3 bg-primary/10 rounded-full text-primary">
                                 <Download className="w-6 h-6" />
                             </div>
                             <div>
@@ -144,7 +144,7 @@ export function HomePage() {
                 <Link to="/playlists">
                     <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
                         <CardContent className="p-6 flex items-center gap-4">
-                            <div className="p-3 bg-purple-500/10 rounded-full text-purple-500">
+                            <div className="p-3 bg-primary/10 rounded-full text-primary">
                                 <ListMusic className="w-6 h-6" />
                             </div>
                             <div>

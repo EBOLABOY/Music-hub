@@ -41,9 +41,9 @@ export function DownloadsPage() {
 
       {/* Status Overview */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-blue-500/10 border-blue-500/20 backdrop-blur-sm">
+        <Card className="bg-primary/10 border-primary/20 backdrop-blur-sm">
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="p-3 bg-blue-500/20 rounded-full text-blue-500">
+            <div className="p-3 bg-primary/20 rounded-full text-primary">
               <Activity className="w-6 h-6" />
             </div>
             <div>
@@ -106,7 +106,7 @@ export function DownloadsPage() {
                         <div className="text-xs text-muted-foreground">{task.artist}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-500 ring-1 ring-inset ring-blue-500/20">
+                        <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
                           {task.status}
                         </span>
                       </td>

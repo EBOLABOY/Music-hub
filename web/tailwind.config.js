@@ -1,3 +1,18 @@
+const primaryPalette = {
+  50: '#fde7ec',
+  100: '#fbd0da',
+  200: '#f7a1b5',
+  300: '#f47190',
+  400: '#f0426b',
+  500: '#cb103c',
+  600: '#a50d31',
+  700: '#840b27',
+  800: '#68081f',
+  900: '#4b0616',
+  DEFAULT: '#cb103c',
+  foreground: '#fff6f8',
+};
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class'],
@@ -17,10 +32,7 @@ export default {
         ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
-        primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
-        },
+        primary: primaryPalette,
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',

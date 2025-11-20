@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Music2, X, ChevronLeft } from 'lucide-react';
+import { Loader2, Music2, X } from 'lucide-react';
 import { api } from '@/services/api';
 import { parseLrc, type LyricLine } from '@/lib/lrcParser';
 import { cn } from '@/lib/utils';
@@ -84,14 +84,14 @@ export function LyricsPanel({
             <div
                 className={cn(
                     "fixed top-0 right-0 h-full w-full lg:w-[420px] bg-gradient-to-br from-gray-50/95 to-white/95 dark:from-gray-900/95 dark:to-black/95",
-                    "backdrop-blur-2xl border-l border-gray-200/50 dark:border-white/10",
+                    "backdrop-blur-2xl border-l border-gray-200/50 dark:border-white/20",
                     "shadow-2xl transform transition-transform duration-300 ease-out z-50",
                     "flex flex-col",
                     isOpen ? "translate-x-0" : "translate-x-full"
                 )}
             >
                 {/* Header */}
-                <div className="flex-shrink-0 px-6 py-5 border-b border-gray-200/50 dark:border-white/10">
+                <div className="flex-shrink-0 px-6 py-5 border-b border-gray-200/50 dark:border-white/20">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-bold flex items-center gap-2">
                             <Music2 className="w-5 h-5 text-primary" />
@@ -108,7 +108,7 @@ export function LyricsPanel({
 
                     {/* Track Info */}
                     <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/20 to-purple-500/20 flex-shrink-0 overflow-hidden shadow-md">
+                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/20 to-primary/40 flex-shrink-0 overflow-hidden shadow-md">
                             {albumId ? (
                                 <img
                                     src={api.getCoverUrl('album', albumId)}
@@ -131,11 +131,7 @@ export function LyricsPanel({
                 {/* Lyrics Content */}
                 <div
                     ref={scrollRef}
-                    className="flex-1 overflow-y-auto scrollbar-hide px-6 py-8 relative"
-                    style={{
-                        maskImage: 'linear-gradient(to bottom, transparent, black 10%, black 90%, transparent)',
-                        WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 10%, black 90%, transparent)'
-                    }}
+                    className="flex-1 overflow-y-auto scrollbar-hide px-6 py-8 relative mask-linear-fade"
                 >
                     {isLoading ? (
                         <div className="flex h-full items-center justify-center">
@@ -153,15 +149,11 @@ export function LyricsPanel({
                                 <div
                                     key={`${index}-${line.time}`}
                                     className={cn(
-                                        "transition-all duration-500 ease-out cursor-pointer px-3 py-2 rounded-lg",
+                                        "transition-all duration-500 ease-out cursor-pointer px-4 py-2 rounded-lg border-l-4 border-transparent",
                                         index === activeLineIndex
-                                            ? "scale-105 font-semibold text-foreground bg-primary/5 border-l-4 border-primary shadow-sm"
+                                            ? "scale-105 font-semibold text-foreground bg-primary/5 border-primary shadow-sm"
                                             : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
                                     )}
-                                    style={{
-                                        fontSize: index === activeLineIndex ? '1.125rem' : '0.95rem',
-                                        lineHeight: index === activeLineIndex ? '1.75rem' : '1.5rem'
-                                    }}
                                 >
                                     {line.text}
                                 </div>
@@ -171,10 +163,6 @@ export function LyricsPanel({
                         </div>
                     )}
                 </div>
-
-                {/* Gradient Overlays for better visual */}
-                <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-gray-50/80 to-transparent dark:from-gray-900/80 pointer-events-none" />
-                <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-gray-50/80 to-transparent dark:from-gray-900/80 pointer-events-none" />
             </div>
         </>
     );

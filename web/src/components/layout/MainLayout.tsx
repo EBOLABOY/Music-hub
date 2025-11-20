@@ -26,7 +26,7 @@ export function MainLayout({ theme, toggleTheme }: MainLayoutProps) {
 
         {/* Floating Player Bar Effect */}
         <div className="absolute bottom-0 left-0 right-0 z-20">
-          <div className="bg-white/80 backdrop-blur-2xl border-t border-white/20 shadow-2xl dark:bg-black/80 dark:border-white/10">
+          <div className="bg-white/80 backdrop-blur-2xl border-t border-white/20 shadow-2xl dark:bg-black/80 dark:border-white/20">
             <PlayerBar track={currentTrack} isPlaying={isPlaying} />
           </div>
         </div>

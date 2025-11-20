@@ -63,7 +63,7 @@ export function AddToPlaylistModal({ trackId, onClose }: AddToPlaylistModalProps
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
             <div className="relative w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-gray-900">
                 <div className="flex items-center justify-between border-b border-gray-100 p-4 dark:border-gray-800">
-                    <h3 className="font-semibold">Add to Playlist</h3>
+                    <h3 className="text-lg font-semibold">添加到歌单</h3>
                     <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-800">
                         <X className="h-5 w-5" />
                     </button>
@@ -83,14 +83,14 @@ export function AddToPlaylistModal({ trackId, onClose }: AddToPlaylistModalProps
                             <button
                                 type="submit"
                                 disabled={createMutation.isPending}
-                                className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
                             >
                                 Create
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setIsCreating(false)}
-                                className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                                className="rounded-md px-3 py-2 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100/70 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/50"
                             >
                                 Cancel
                             </button>

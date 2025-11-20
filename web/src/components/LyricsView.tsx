@@ -82,20 +82,20 @@ export function LyricsView({ trackId, currentTime, className }: LyricsViewProps)
                 className
             )}
         >
-            <div className="space-y-6">
+            <div className="space-y-4 max-w-2xl mx-auto">
                 {lyrics.map((line, index) => (
-                    <p
+                    <div
                         key={`${index}-${line.time}`}
                         data-lyric-index={index}
                         className={cn(
-                            "transition-all duration-500 ease-out",
+                            "transition-all duration-500 ease-out px-4 py-2 rounded-lg border-l-4 border-transparent text-left",
                             index === activeLineIndex
-                                ? "scale-110 text-xl font-bold text-blue-600 dark:text-blue-400"
-                                : "text-base text-gray-400 dark:text-gray-500 blur-[0.5px]"
+                                ? "scale-105 text-lg font-semibold text-primary bg-primary/5 border-primary shadow-sm"
+                                : "text-base text-gray-400 dark:text-gray-500"
                         )}
                     >
                         {line.text}
-                    </p>
+                    </div>
                 ))}
             </div>
         </div>

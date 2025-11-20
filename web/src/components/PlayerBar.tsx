@@ -48,7 +48,12 @@ export function PlayerBar({ track, isPlaying }: PlayerBarProps) {
       <div className="flex items-center gap-4 px-4 py-3">
         {/* Track Info */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="w-14 h-14 rounded-lg bg-muted flex-shrink-0 overflow-hidden">
+          <div
+            className={cn(
+              "w-14 h-14 rounded-lg flex-shrink-0 overflow-hidden shadow-sm border border-gray-200/60 dark:border-white/10",
+              track?.album_id ? "bg-muted" : "bg-gradient-to-br from-primary/20 to-primary/40"
+            )}
+          >
             {track?.album_id ? (
               <img
                 src={api.getCoverUrl('album', track.album_id)}
@@ -60,7 +65,7 @@ export function PlayerBar({ track, isPlaying }: PlayerBarProps) {
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <Music className="w-6 h-6 text-muted-foreground/50" />
+                <Music className="w-6 h-6 text-primary/60" />
               </div>
             )}
           </div>

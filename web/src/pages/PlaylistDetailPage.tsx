@@ -60,7 +60,7 @@ export function PlaylistDetailPage() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col gap-8 md:flex-row items-end">
-                <div className="h-64 w-64 flex-shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 to-purple-500/20 shadow-2xl flex items-center justify-center">
+                <div className="h-64 w-64 flex-shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 to-primary/40 shadow-2xl flex items-center justify-center">
                     <Music className="h-24 w-24 text-primary/40" />
                 </div>
 

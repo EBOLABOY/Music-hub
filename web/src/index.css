@@ -16,7 +16,6 @@
     --popover-foreground: 240 10% 3.9%;
 
     --primary: 346 87% 43%;
-    /* Apple Music Pink/Red-ish */
     --primary-foreground: 0 0% 98%;
 
     --secondary: 240 4.8% 95.9%;
@@ -84,11 +83,11 @@
 
 @layer utilities {
   .glass {
-    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-sm dark:bg-black/70 dark:border-white/10;
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-sm dark:bg-black/70 dark:border-white/20;
   }
 
   .glass-card {
-    @apply bg-white/50 backdrop-blur-lg border border-white/20 shadow-sm transition-all hover:bg-white/60 dark:bg-white/5 dark:border-white/10 dark:hover:bg-white/10;
+    @apply bg-white/50 backdrop-blur-lg border border-white/20 shadow-sm transition-all hover:bg-white/60 dark:bg-white/5 dark:border-white/20 dark:hover:bg-white/10;
   }
 
   .mask-linear-fade {
