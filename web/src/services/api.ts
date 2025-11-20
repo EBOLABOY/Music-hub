@@ -35,6 +35,13 @@ export interface DownloadTask {
   bitrate?: string;
   trackId?: string;
   source?: SearchSource;
+  album?: string;
+  downloadUrl?: string | null;
+  libraryTrackId?: string | null;
+  libraryAlbumId?: string | null;
+  existing?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ScannerStatus {
@@ -51,11 +58,7 @@ export interface StartDownloadPayload {
   album: string;
 }
 
-export interface StartDownloadResponse {
-  taskId?: string;
-  success?: boolean;
-  message?: string;
-}
+export type StartDownloadResponse = DownloadTask;
 
 export interface MediaAlbum {
   id: string;
@@ -85,6 +88,8 @@ export interface Playlist {
   id: string;
   name: string;
   created_at: string;
+  cover_track_id?: string | null;
+  cover_album_id?: string | null;
 }
 
 export interface PlaylistTrack extends MediaTrack {
@@ -93,6 +98,43 @@ export interface PlaylistTrack extends MediaTrack {
 
 export interface PlaylistDetail extends Playlist {
   tracks: PlaylistTrack[];
+}
+
+export interface ChartTrack {
+  id: string;
+  rank: number;
+  name: string;
+  alias: string[];
+  artists: string[];
+  album: string;
+  albumId: string | null;
+  duration: number;
+  fee: number;
+  source: SearchSource;
+  picId: string | null;
+  coverImgUrl: string | null;
+  privilege?: Record<string, unknown> | null;
+}
+
+export interface ChartPlaylist {
+  id: string | null;
+  name: string;
+  description: string;
+  coverImgUrl: string | null;
+  trackCount: number;
+  updateTime: number | null;
+  updateFrequency: string | null;
+  subscribedCount: number | null;
+  playCount: number | null;
+  source: SearchSource;
+  tracks: ChartTrack[];
+}
+
+export interface ChartWithMeta extends ChartPlaylist {
+  key: string;
+  label: string;
+  shortDescription?: string | null;
+  category?: string | null;
 }
 
 export const buildApiUrl = (path: string): string => {
@@ -226,5 +268,24 @@ export const api = {
         method: 'DELETE'
       }
     );
+  },
+
+  getCharts: (limit = 10) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    return fetchJson<ChartWithMeta[]>(buildApiUrl(`/api/charts?${params.toString()}`));
+  },
+
+  getChart: (key: string, limit = 20) => {
+    const params = new URLSearchParams();
+    if (limit) {
+      params.set('limit', String(limit));
+    }
+    const query = params.toString();
+    const suffix = query ? `?${query}` : '';
+    return fetchJson<ChartWithMeta>(buildApiUrl(`/api/charts/${key}${suffix}`));
+  },
+
+  getSoaringChart: () => {
+    return api.getChart('soaring');
   }
 };

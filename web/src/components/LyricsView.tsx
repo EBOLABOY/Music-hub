@@ -2,16 +2,30 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, Music2 } from 'lucide-react';
 import { api } from '@/services/api';
-import { parseLrc, type LyricLine } from '@/lib/lrcParser';
+import { parseLrc } from '@/lib/lrcParser';
 import { cn } from '@/lib/utils';
 
 interface LyricsViewProps {
     trackId: string;
     currentTime: number;
     className?: string;
+    activeClassName?: string;
+    inactiveClassName?: string;
+    align?: 'left' | 'center';
+    padding?: 'compact' | 'spacious';
+    enabled?: boolean;
 }
 
-export function LyricsView({ trackId, currentTime, className }: LyricsViewProps) {
+export function LyricsView({
+    trackId,
+    currentTime,
+    className,
+    activeClassName = "scale-105 text-lg font-semibold text-primary bg-primary/5 border-primary shadow-sm",
+    inactiveClassName = "text-base text-gray-400 dark:text-gray-500",
+    align = 'center',
+    padding = 'spacious',
+    enabled = true
+}: LyricsViewProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [activeLineIndex, setActiveLineIndex] = useState(-1);
 
@@ -23,7 +37,7 @@ export function LyricsView({ trackId, currentTime, className }: LyricsViewProps)
             if (!res.ok) throw new Error('Failed to fetch lyrics');
             return res.text();
         },
-        enabled: !!trackId
+        enabled: enabled && !!trackId
     });
 
     const lyrics = useMemo(() => (lyricsContent ? parseLrc(lyricsContent) : []), [lyricsContent]);
@@ -60,14 +74,14 @@ export function LyricsView({ trackId, currentTime, className }: LyricsViewProps)
     if (isLoading) {
         return (
             <div className={cn("flex h-full items-center justify-center", className)}>
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
         );
     }
 
     if (isError || !lyrics.length) {
         return (
-            <div className={cn("flex h-full flex-col items-center justify-center text-gray-500", className)}>
+            <div className={cn("flex h-full flex-col items-center justify-center text-muted-foreground", className)}>
                 <Music2 className="mb-2 h-12 w-12 opacity-20" />
                 <p>No lyrics available</p>
             </div>
@@ -78,7 +92,9 @@ export function LyricsView({ trackId, currentTime, className }: LyricsViewProps)
         <div
             ref={scrollRef}
             className={cn(
-                "h-full overflow-y-auto px-4 py-32 text-center scrollbar-hide mask-linear-fade",
+                "h-full overflow-y-auto px-4 text-center scrollbar-hide mask-linear-fade",
+                align === 'left' ? 'text-left' : 'text-center',
+                padding === 'compact' ? 'py-12' : 'py-32',
                 className
             )}
         >
@@ -88,10 +104,8 @@ export function LyricsView({ trackId, currentTime, className }: LyricsViewProps)
                         key={`${index}-${line.time}`}
                         data-lyric-index={index}
                         className={cn(
-                            "transition-all duration-500 ease-out px-4 py-2 rounded-lg border-l-4 border-transparent text-left",
-                            index === activeLineIndex
-                                ? "scale-105 text-lg font-semibold text-primary bg-primary/5 border-primary shadow-sm"
-                                : "text-base text-gray-400 dark:text-gray-500"
+                            "transition-all duration-500 ease-out py-3 rounded-lg text-left origin-left",
+                            index === activeLineIndex ? activeClassName : inactiveClassName
                         )}
                     >
                         {line.text}

@@ -30,7 +30,7 @@ export function SearchPage() {
 
   const handleDownload = async (track: TrackInfo) => {
     try {
-      await api.startDownload({
+      const task = await api.startDownload({
         trackId: track.trackId || track.id || '',
         picId: track.picId || track.pic_id || '',
         source: track.source || source,
@@ -38,7 +38,11 @@ export function SearchPage() {
         artist: Array.isArray(track.artist) ? track.artist.join(', ') : (track.artist || 'Unknown Artist'),
         album: track.album || track.album_name || ''
       });
-      toast.success('Added to download queue');
+      if (task.existing && task.libraryTrackId) {
+        toast.success('该歌曲已在本地，无需重复下载');
+      } else {
+        toast.success('Added to download queue');
+      }
     } catch (error) {
       toast.error('Failed to start download');
     }

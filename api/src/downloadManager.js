@@ -352,6 +352,8 @@ class DownloadManager {
       console.warn(`Failed to apply metadata for ${destPath}: ${error.message}`);
     }
 
+    let libraryTrackId = null;
+    let libraryAlbumId = null;
     try {
       let parsedStats = {
         duration: 0,
@@ -380,9 +382,17 @@ class DownloadManager {
         year: metadata?.releaseYear || null,
         duration: parsedStats.duration || metadata?.duration || 0,
         format: parsedStats.format || path.extname(destPath).replace('.', ''),
-        bitrate: parsedStats.bitrate || metadata?.bitrate || 0
+        bitrate: parsedStats.bitrate || metadata?.bitrate || 0,
+        source: metadata?.source || null,
+        sourceTrackId: metadata?.trackId || metadata?.sourceTrackId || null
       };
-      db.upsertTrack(trackMeta, destPath, lyricsPath);
+      libraryTrackId = db.upsertTrack(trackMeta, destPath, lyricsPath);
+      if (libraryTrackId) {
+        const indexedTrack = db.getTrackById(libraryTrackId);
+        if (indexedTrack?.album_id) {
+          libraryAlbumId = indexedTrack.album_id;
+        }
+      }
       console.log(`[Indexer] Added to DB: ${trackMeta.title} (${taskId})`);
     } catch (dbError) {
       console.warn(`[Indexer] Failed to index ${destPath}: ${dbError.message}`);
@@ -404,7 +414,9 @@ class DownloadManager {
         trackNumber: metadata?.trackNumber || null,
         discNumber: metadata?.discNumber || null,
         releaseYear: metadata?.releaseYear || null
-      }
+      },
+      libraryTrackId,
+      libraryAlbumId
     });
 
     this.scheduleCleanup(taskId);

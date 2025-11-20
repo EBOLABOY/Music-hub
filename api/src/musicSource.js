@@ -249,3 +249,15 @@ export const resolveTrackLyrics = async (trackId, source = 'qobuz', title, artis
     return null;
   }
 };
+
+export const fetchPlaylistDetail = async (playlistId, source = 'netease') => {
+  if (!playlistId) {
+    throw new Error('Playlist id is required');
+  }
+  const params = {
+    types: 'playlist',
+    id: playlistId,
+    source
+  };
+  return apiRequest(params);
+};

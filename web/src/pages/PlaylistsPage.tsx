@@ -81,38 +81,51 @@ export function PlaylistsPage() {
             )}
 
             <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {playlists.map((playlist) => (
-                    <div key={playlist.id} className="group relative">
-                        <Link to={`/playlists/${playlist.id}`} className="block space-y-3">
-                            <div className="relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 shadow-md transition-all duration-300 group-hover:shadow-xl dark:from-gray-800 dark:to-gray-900">
-                                <div className="flex h-full w-full items-center justify-center">
-                                    <ListMusic className="h-16 w-16 text-muted-foreground/50" />
+                {playlists.map((playlist) => {
+                    const coverUrl = playlist.cover_album_id
+                        ? api.getCoverUrl('album', playlist.cover_album_id)
+                        : null;
+                    return (
+                        <div key={playlist.id} className="group relative">
+                            <Link to={`/playlists/${playlist.id}`} className="block space-y-3">
+                                <div className="relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 shadow-md transition-all duration-300 group-hover:shadow-xl dark:from-gray-800 dark:to-gray-900">
+                                    {coverUrl ? (
+                                        <img
+                                            src={coverUrl}
+                                            alt={playlist.name}
+                                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                        />
+                                    ) : (
+                                        <div className="flex h-full w-full items-center justify-center">
+                                            <ListMusic className="h-16 w-16 text-muted-foreground/50" />
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
                                 </div>
-                                <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="font-medium leading-none truncate">{playlist.name}</h3>
-                                <p className="text-xs text-muted-foreground">
-                                    {new Date(playlist.created_at).toLocaleDateString()}
-                                </p>
-                            </div>
-                        </Link>
+                                <div className="space-y-1">
+                                    <h3 className="font-medium leading-none truncate">{playlist.name}</h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        {new Date(playlist.created_at).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </Link>
 
-                        <Button
-                            variant="destructive"
-                            size="icon"
-                            className="absolute right-2 top-2 h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                if (confirm('Delete this playlist?')) {
-                                    deleteMutation.mutate(playlist.id);
-                                }
-                            }}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
-                ))}
+                            <Button
+                                variant="destructive"
+                                size="icon"
+                                className="absolute right-2 top-2 h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    if (confirm('Delete this playlist?')) {
+                                        deleteMutation.mutate(playlist.id);
+                                    }
+                                }}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    );
+                })}
             </div>
 
             {playlists.length === 0 && !isCreating && (

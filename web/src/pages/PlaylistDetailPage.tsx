@@ -1,7 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Play, Trash2, Clock, Music, Plus } from 'lucide-react';
+import { Play, Trash2, Clock, Music } from 'lucide-react';
 import { api } from '@/services/api';
+import type { PlaylistTrack } from '@/services/api';
 import { Button } from '@/components/ui/Button';
 import { Loader2 } from 'lucide-react';
 import { usePlayer } from '@/contexts/PlayerContext';
@@ -11,7 +12,7 @@ export function PlaylistDetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { playTrack } = usePlayer();
+    const { playTrack, playPlaylist } = usePlayer();
 
     const { data: playlist, isLoading } = useQuery({
         queryKey: ['playlist', id],
@@ -39,14 +40,25 @@ export function PlaylistDetailPage() {
         onError: () => toast.error('Failed to delete playlist')
     });
 
-    const handlePlayTrack = (track: any) => {
-        playTrack({
-            id: track.id,
-            title: track.title,
-            artist: track.artist,
-            album_id: track.album_id,
-            duration: track.duration
-        });
+    const normalizeTrack = (track: PlaylistTrack) => ({
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: (track as any).album,
+        album_id: track.album_id,
+        duration: track.duration
+    });
+
+    const handlePlayTrack = (track: PlaylistTrack) => {
+        playTrack(normalizeTrack(track));
+    };
+
+    const handlePlayAll = () => {
+        if (!playlist?.tracks || playlist.tracks.length === 0) {
+            toast.error('This playlist is empty');
+            return;
+        }
+        playPlaylist(playlist.tracks.map(normalizeTrack));
     };
 
     if (isLoading) {
@@ -57,11 +69,18 @@ export function PlaylistDetailPage() {
         return <div className="text-center py-20">Playlist not found</div>;
     }
 
+    const coverAlbumId = playlist.cover_album_id ?? playlist.tracks?.[0]?.album_id ?? null;
+    const coverUrl = coverAlbumId ? api.getCoverUrl('album', coverAlbumId) : null;
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col gap-8 md:flex-row items-end">
                 <div className="h-64 w-64 flex-shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 to-primary/40 shadow-2xl flex items-center justify-center">
-                    <Music className="h-24 w-24 text-primary/40" />
+                    {coverUrl ? (
+                        <img src={coverUrl} alt={playlist.name} className="h-full w-full object-cover" />
+                    ) : (
+                        <Music className="h-24 w-24 text-primary/40" />
+                    )}
                 </div>
 
                 <div className="flex-1 space-y-4">
@@ -70,7 +89,7 @@ export function PlaylistDetailPage() {
                         Playlist • {playlist.tracks?.length || 0} songs • Created {new Date(playlist.created_at).toLocaleDateString()}
                     </p>
                     <div className="flex gap-3">
-                        <Button size="lg" className="rounded-full px-8" onClick={() => playlist.tracks?.[0] && handlePlayTrack(playlist.tracks[0].id)}>
+                        <Button size="lg" className="rounded-full px-8" onClick={handlePlayAll}>
                             <Play className="mr-2 h-5 w-5" fill="currentColor" />
                             Play
                         </Button>
@@ -110,7 +129,7 @@ export function PlaylistDetailPage() {
                             >
                                 <td className="px-4 py-3 text-muted-foreground">
                                     <span className="group-hover:hidden">{i + 1}</span>
-                                    <button onClick={() => handlePlayTrack(track.id)} className="hidden group-hover:inline-block text-primary">
+                                    <button onClick={() => handlePlayTrack(track)} className="hidden group-hover:inline-block text-primary">
                                         <Play className="h-4 w-4" fill="currentColor" />
                                     </button>
                                 </td>

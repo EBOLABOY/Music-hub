@@ -13,11 +13,60 @@ const parseIntOrDefault = (value, fallback) => {
   return Number.isNaN(parsed) ? fallback : parsed;
 };
 
+const defaultNeteasePlaylists = [
+  {
+    key: 'soaring',
+    id: process.env.NETEASE_SOARING_PLAYLIST_ID || '19723756',
+    name: '飙升榜',
+    description: '云音乐中每天热度上升最快的单曲，每日更新。'
+  },
+  {
+    key: 'hot',
+    id: process.env.NETEASE_HOT_PLAYLIST_ID || '3778678',
+    name: '热歌榜',
+    description: '云音乐热度最高的单曲合集。'
+  },
+  {
+    key: 'new',
+    id: process.env.NETEASE_NEW_PLAYLIST_ID || '3779629',
+    name: '新歌榜',
+    description: '云音乐收录的最新热门单曲速递。'
+  },
+  {
+    key: 'electric',
+    id: process.env.NETEASE_EDM_PLAYLIST_ID || '1978921795',
+    name: '电音榜',
+    description: '电音爱好者不能错过的节奏精选。'
+  },
+  {
+    key: 'euro_america',
+    id: process.env.NETEASE_EURO_PLAYLIST_ID || '2809513713',
+    name: '欧美热歌榜',
+    description: '欧美流行乐坛热门单曲趋势。'
+  },
+  {
+    key: 'acg',
+    id: process.env.NETEASE_ACG_PLAYLIST_ID || '71385702',
+    name: 'ACG 动漫榜',
+    description: '二次元、游戏与动漫音乐精选。'
+  }
+];
+
 const config = {
   env: process.env.NODE_ENV || 'production',
   port: parseIntOrDefault(process.env.PORT, 4000),
   downloadDir: process.env.DOWNLOAD_DIR || '/downloads',
   taskCleanupMs: parseIntOrDefault(process.env.TASK_CLEANUP_MS, 0),
+  charts: {
+    cacheTtlMs: parseIntOrDefault(
+      process.env.NETEASE_SOARING_CACHE_TTL_MS,
+      1000 * 60 * 5
+    ),
+    netease: {
+      defaultSource: process.env.NETEASE_SOARING_SOURCE || 'netease',
+      playlists: defaultNeteasePlaylists
+    }
+  },
   musicSource: {
     timeEndpoint: process.env.MUSIC_TIME_ENDPOINT || 'https://www.ximalaya.com/revision/time',
     apiBase: process.env.MUSIC_API_BASE || 'https://music-api-us.gdstudio.xyz/api.php',

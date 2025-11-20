@@ -1,7 +1,17 @@
 import fs from 'fs';
 import axios from 'axios';
 
-export const sanitizeFilename = (name = '') => name.replace(/[\\/:*?"<>|]/g, '_');
+const MAX_FILENAME_LENGTH = 128;
+
+export const sanitizeFilename = (name = '') => {
+  const replaced = name.replace(/[\\/:*?"<>|]/g, '_').trim();
+  if (replaced.length <= MAX_FILENAME_LENGTH) {
+    return replaced;
+  }
+  const hash = Buffer.from(replaced).toString('base64').replace(/[^a-z0-9]/gi, '').slice(0, 6);
+  const sliceLength = Math.max(0, MAX_FILENAME_LENGTH - hash.length - 1);
+  return `${replaced.slice(0, sliceLength)}_${hash}`;
+};
 
 export const downloadSimpleFile = async (url, destPath, options = {}) => {
   if (!url) return false;

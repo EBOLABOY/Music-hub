@@ -11,7 +11,7 @@ export function Sidebar() {
     });
 
     const navItems = [
-        { icon: Home, label: 'Home', href: '/' },
+        { icon: Home, label: 'Home', href: '/', end: true },
         { icon: Search, label: 'Search', href: '/search' },
         { icon: Library, label: 'Library', href: '/library' },
         { icon: Download, label: 'Downloads', href: '/downloads' },
@@ -32,6 +32,7 @@ export function Sidebar() {
                         <NavLink
                             key={item.href}
                             to={item.href}
+                            end={item.end}
                             className={({ isActive }) =>
                                 cn(
                                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 border-l-4 border-transparent",
@@ -64,6 +65,7 @@ export function Sidebar() {
                 <div className="space-y-1">
                     <NavLink
                         to="/playlists"
+                        end
                         className={({ isActive }) =>
                             cn(
                                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 border-l-4 border-transparent",
@@ -80,6 +82,7 @@ export function Sidebar() {
                         <NavLink
                             key={playlist.id}
                             to={`/playlists/${playlist.id}`}
+                            end
                             className={({ isActive }) =>
                                 cn(
                                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 border-l-4 border-transparent",

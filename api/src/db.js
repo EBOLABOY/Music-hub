@@ -48,6 +48,8 @@ db.exec(`
     created_at TEXT,
     track_number INTEGER,
     disc_number INTEGER DEFAULT 1,
+    source_track_id TEXT,
+    source TEXT,
     FOREIGN KEY(album_id) REFERENCES albums(id) ON DELETE CASCADE
   );
 
@@ -59,7 +61,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS playlists (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    created_at TEXT
+    created_at TEXT,
+    cover_track_id TEXT,
+    cover_album_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS playlist_tracks (
@@ -87,6 +91,50 @@ const migrate = () => {
   } catch {
     // column already exists
   }
+  try {
+    db.prepare('ALTER TABLE tracks ADD COLUMN source_track_id TEXT').run();
+    console.log('Migrated: Added source_track_id column');
+  } catch {
+    // column already exists
+  }
+  try {
+    db.prepare('ALTER TABLE tracks ADD COLUMN source TEXT').run();
+    console.log('Migrated: Added source column');
+  } catch {
+    // column already exists
+  }
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source_track_id, source)').run();
+  try {
+    db.prepare('ALTER TABLE playlists ADD COLUMN cover_track_id TEXT').run();
+    console.log('Migrated: Added playlists.cover_track_id column');
+  } catch {
+    // already exists
+  }
+  try {
+    db.prepare('ALTER TABLE playlists ADD COLUMN cover_album_id TEXT').run();
+    console.log('Migrated: Added playlists.cover_album_id column');
+  } catch {
+    // already exists
+  }
+  db.prepare(
+    `UPDATE playlists
+     SET cover_track_id = (
+       SELECT track_id
+       FROM playlist_tracks
+       WHERE playlist_tracks.playlist_id = playlists.id
+       ORDER BY datetime(playlist_tracks.added_at) DESC
+       LIMIT 1
+     ),
+     cover_album_id = (
+       SELECT t.album_id
+       FROM playlist_tracks pt
+       JOIN tracks t ON pt.track_id = t.id
+       WHERE pt.playlist_id = playlists.id
+       ORDER BY datetime(pt.added_at) DESC
+       LIMIT 1
+     )
+     WHERE cover_track_id IS NULL`
+  ).run();
 };
 
 migrate();
@@ -141,7 +189,9 @@ class MusicDatabase {
       format,
       year,
       trackNumber,
-      discNumber
+      discNumber,
+      source,
+      sourceTrackId
     } = metadata || {};
     const dir = path.dirname(filePath);
     let coverPath = path.join(dir, 'folder.jpg');
@@ -174,6 +224,8 @@ class MusicDatabase {
         lyrics_path,
         track_number,
         disc_number,
+        source_track_id,
+        source,
         created_at
       )
       VALUES (
@@ -188,6 +240,8 @@ class MusicDatabase {
         @lyricsPath,
         @trackNumber,
         @discNumber,
+        @sourceTrackId,
+        @source,
         @createdAt
       )
       ON CONFLICT(file_path) DO UPDATE SET
@@ -199,7 +253,9 @@ class MusicDatabase {
         bitrate=excluded.bitrate,
         format=excluded.format,
         track_number=excluded.track_number,
-        disc_number=excluded.disc_number
+        disc_number=excluded.disc_number,
+        source_track_id=COALESCE(excluded.source_track_id, tracks.source_track_id),
+        source=COALESCE(excluded.source, tracks.source)
     `);
 
     stmt.run({
@@ -214,6 +270,8 @@ class MusicDatabase {
       lyricsPath: lyricsPath || null,
       trackNumber: trackNumber ?? null,
       discNumber: discNumber ?? 1,
+      sourceTrackId: sourceTrackId ?? null,
+      source: source ?? null,
       createdAt: now
     });
 
@@ -240,6 +298,118 @@ class MusicDatabase {
 
   getTrackById(id) {
     return db.prepare('SELECT * FROM tracks WHERE id = ?').get(id);
+  }
+
+  getTrackBySourceTrack(sourceTrackId, source) {
+    if (!sourceTrackId || !source) return null;
+    return db
+      .prepare(
+        `SELECT tracks.*, albums.name AS album_name
+         FROM tracks
+         LEFT JOIN albums ON tracks.album_id = albums.id
+         WHERE tracks.source_track_id = ? AND tracks.source = ?
+         LIMIT 1`
+      )
+      .get(sourceTrackId, source);
+  }
+
+  getPlaylists() {
+    return db.prepare('SELECT * FROM playlists ORDER BY created_at DESC').all();
+  }
+
+  createPlaylist(name) {
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    db.prepare('INSERT INTO playlists (id, name, created_at) VALUES (?, ?, ?)').run(id, name, now);
+    return { id, name, created_at: now };
+  }
+
+  getPlaylist(id) {
+    return db.prepare('SELECT * FROM playlists WHERE id = ?').get(id);
+  }
+
+  getPlaylistTracks(playlistId) {
+    return db
+      .prepare(
+        `SELECT t.*, pt.added_at
+         FROM playlist_tracks pt
+         JOIN tracks t ON pt.track_id = t.id
+         WHERE pt.playlist_id = ?
+         ORDER BY datetime(pt.added_at) DESC`
+      )
+      .all(playlistId);
+  }
+
+  deletePlaylist(id) {
+    const result = db.prepare('DELETE FROM playlists WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
+  addTrackToPlaylist(playlistId, trackId) {
+    const now = new Date().toISOString();
+    const result = db
+      .prepare(
+        `INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, added_at)
+         VALUES (?, ?, ?)`
+      )
+      .run(playlistId, trackId, now);
+    const inserted = result.changes > 0;
+    if (inserted) {
+      this.ensurePlaylistCover(playlistId, trackId);
+    }
+    return inserted;
+  }
+
+  removeTrackFromPlaylist(playlistId, trackId) {
+    const playlist = db.prepare('SELECT cover_track_id FROM playlists WHERE id = ?').get(playlistId);
+    const result = db
+      .prepare('DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?')
+      .run(playlistId, trackId);
+    const removed = result.changes > 0;
+    if (removed && playlist?.cover_track_id === trackId) {
+      this.refreshPlaylistCover(playlistId);
+    }
+    return removed;
+  }
+
+  ensurePlaylistCover(playlistId, trackId) {
+    const playlist = db.prepare('SELECT cover_track_id FROM playlists WHERE id = ?').get(playlistId);
+    if (!playlist || playlist.cover_track_id) {
+      return;
+    }
+    this.setPlaylistCoverFromTrack(playlistId, trackId);
+  }
+
+  refreshPlaylistCover(playlistId) {
+    const nextTrack = db
+      .prepare(
+        `SELECT t.id
+         FROM playlist_tracks pt
+         JOIN tracks t ON pt.track_id = t.id
+         WHERE pt.playlist_id = ?
+         ORDER BY datetime(pt.added_at) DESC
+         LIMIT 1`
+      )
+      .get(playlistId);
+    if (nextTrack) {
+      this.setPlaylistCoverFromTrack(playlistId, nextTrack.id);
+    } else {
+      db.prepare('UPDATE playlists SET cover_track_id = NULL, cover_album_id = NULL WHERE id = ?').run(
+        playlistId
+      );
+    }
+  }
+
+  setPlaylistCoverFromTrack(playlistId, trackId) {
+    const track = this.getTrackById(trackId);
+    if (!track) {
+      return;
+    }
+    db.prepare('UPDATE playlists SET cover_track_id = ?, cover_album_id = ? WHERE id = ?').run(
+      track.id,
+      track.album_id || null,
+      playlistId
+    );
   }
 }
 

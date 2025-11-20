@@ -1,19 +1,18 @@
 import { useState } from 'react';
-import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Music } from 'lucide-react';
+import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Music, Maximize2 } from 'lucide-react';
 import { usePlayer, type Track } from '@/contexts/PlayerContext';
-import { LyricsPanel } from './LyricsPanel';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
 
 interface PlayerBarProps {
   track: Track | null;
   isPlaying: boolean;
+  onOpenFullScreen?: () => void;
 }
 
-export function PlayerBar({ track, isPlaying }: PlayerBarProps) {
+export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps) {
   const { togglePlayback, next, prev, seek, setVolume, volume, currentTime, duration } = usePlayer();
   const [isMuted, setIsMuted] = useState(false);
-  const [showLyrics, setShowLyrics] = useState(false);
 
   const toggleMute = () => {
     if (isMuted) {
@@ -47,29 +46,37 @@ export function PlayerBar({ track, isPlaying }: PlayerBarProps) {
     <>
       <div className="flex items-center gap-4 px-4 py-3">
         {/* Track Info */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div
+          className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group"
+          onClick={() => track && onOpenFullScreen?.()}
+        >
           <div
             className={cn(
-              "w-14 h-14 rounded-lg flex-shrink-0 overflow-hidden shadow-sm border border-gray-200/60 dark:border-white/10",
+              "w-14 h-14 rounded-lg flex-shrink-0 overflow-hidden shadow-sm border border-gray-200/60 dark:border-white/10 relative",
               track?.album_id ? "bg-muted" : "bg-gradient-to-br from-primary/20 to-primary/40"
             )}
           >
             {track?.album_id ? (
-              <img
-                src={api.getCoverUrl('album', track.album_id)}
-                alt={track.title}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
+              <>
+                <img
+                  src={api.getCoverUrl('album', track.album_id)}
+                  alt={track.title}
+                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <Maximize2 className="w-6 h-6 text-white drop-shadow-md" />
+                </div>
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <Music className="w-6 h-6 text-primary/60" />
               </div>
             )}
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 group-hover:text-primary transition-colors">
             <div className="font-medium truncate text-sm">
               {track?.title || 'No track playing'}
             </div>
@@ -136,18 +143,6 @@ export function PlayerBar({ track, isPlaying }: PlayerBarProps) {
         {/* Volume & Extras */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => track && setShowLyrics(!showLyrics)}
-            disabled={!track}
-            className={cn(
-              "p-2 rounded-full hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
-              showLyrics && "bg-primary/10 text-primary"
-            )}
-            title="Lyrics"
-          >
-            <Mic2 className="w-4 h-4" />
-          </button>
-
-          <button
             onClick={toggleMute}
             className="p-2 rounded-full hover:bg-muted transition-colors"
             title={isMuted ? 'Unmute' : 'Mute'}
@@ -175,19 +170,6 @@ export function PlayerBar({ track, isPlaying }: PlayerBarProps) {
           />
         </div>
       </div>
-
-      {/* Lyrics Panel */}
-      {track && (
-        <LyricsPanel
-          trackId={track.id}
-          trackTitle={track.title}
-          trackArtist={track.artist}
-          albumId={track.album_id}
-          currentTime={currentTime}
-          isOpen={showLyrics}
-          onClose={() => setShowLyrics(false)}
-        />
-      )}
     </>
   );
 }

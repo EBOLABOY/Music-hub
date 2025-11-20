@@ -23,7 +23,9 @@ class TaskStore {
       downloadUrl: null,
       createdAt: now,
       updatedAt: now,
-      lastKnownState: null
+      lastKnownState: null,
+      libraryTrackId: null,
+      libraryAlbumId: null
     };
     this.tasks.set(id, task);
     return task;
