@@ -16,13 +16,14 @@ import {
     Zap,
     Globe,
     Gamepad2,
-    Loader2
+    Loader2,
+    Trophy
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, type ChartTrack, type ChartWithMeta, type DownloadTask } from '@/services/api';
-import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { usePlayer } from '@/contexts/PlayerContext';
+import { cn } from '@/lib/utils';
 
 type AutoPlayEntry = {
     track: ChartTrack;
@@ -44,60 +45,53 @@ export function HomePage() {
         });
     };
 
-    // 获取专辑数据
+    // Data Fetching
     const { data: albums = [], isLoading: isLoadingAlbums } = useQuery({
         queryKey: ['albums'],
         queryFn: api.getAlbums
     });
 
-    // 获取歌单数据
     const { data: playlists = [] } = useQuery({
         queryKey: ['playlists'],
         queryFn: api.getPlaylists
     });
 
-    // 获取网易云榜单
     const { data: neteaseCharts = [], isLoading: isLoadingCharts } = useQuery<ChartWithMeta[]>({
         queryKey: ['charts', 'netease'],
-        queryFn: () => api.getCharts(20), // Increased limit to ensure we get all relevant charts
+        queryFn: () => api.getCharts(20),
         staleTime: 1000 * 60 * 5
     });
 
-    // 获取下载任务（用于显示活动任务概览）
     const { data: tasks = [] } = useQuery<DownloadTask[]>({
         queryKey: ['tasks'],
         queryFn: api.getTasks,
         refetchInterval: 5000
     });
 
-    // 数据处理：统计和排序
+    // Memoized Stats
     const {
         recentAlbums,
         stats,
         activeTaskCount,
         failedTaskCount
     } = useMemo(() => {
-        // 1. 最近添加的 5 张专辑 (假设 API 返回的数据包含 created_at，如果没有则按原序)
         const sortedAlbums = [...albums].sort((a, b) => {
             return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
         });
 
-        // 2. 统计数据
-        // 注意：当前 api.getAlbums 返回的是专辑列表，如果包含 trackCount 最好，否则只能算专辑数
         const totalAlbums = albums.length;
-
-        // 3. 任务状态
         const active = tasks.filter(t => t.status !== 'completed' && t.status !== 'failed').length;
         const failed = tasks.filter(t => t.status === 'failed').length;
 
         return {
-            recentAlbums: sortedAlbums.slice(0, 5), // 只取前5张
+            recentAlbums: sortedAlbums.slice(0, 5),
             stats: { totalAlbums },
             activeTaskCount: active,
             failedTaskCount: failed
         };
     }, [albums, tasks]);
 
+    // Visual Configurations
     const chartVisuals: Record<
         string,
         {
@@ -142,6 +136,12 @@ export function HomePage() {
             color: 'text-emerald-500',
             gradient: 'from-emerald-400 to-teal-500',
             bgGradient: 'from-emerald-400/10 to-teal-500/5'
+        },
+        billboard: {
+            icon: Trophy,
+            color: 'text-fuchsia-500',
+            gradient: 'from-fuchsia-400 to-pink-500',
+            bgGradient: 'from-fuchsia-400/10 to-pink-500/5'
         }
     };
 
@@ -153,17 +153,15 @@ export function HomePage() {
             bgGradient: 'from-primary/10 to-primary/5'
         };
 
-    // Filter charts to only show those with defined visuals (to ensure quality and match the 6 expected charts)
     const displayCharts = useMemo(() => {
         return neteaseCharts.filter(chart => chartVisuals[chart.key]);
     }, [neteaseCharts]);
 
-    // 播放整张专辑的第一首歌（简化的逻辑，实际可能需要获取专辑详情）
+    // Logic Handlers
     const handlePlayAlbum = async (albumId: string) => {
         try {
             const detail = await api.getAlbumDetail(albumId);
             if (detail.tracks.length > 0) {
-                // 使用 playPlaylist 播放整张专辑
                 playPlaylist(detail.tracks);
             }
         } catch (e) {
@@ -190,10 +188,7 @@ export function HomePage() {
         const date = new Date(timestamp);
         const now = new Date();
         const diff = now.getTime() - date.getTime();
-
-        if (diff < 1000 * 60 * 60 * 24) {
-            return '刚刚更新';
-        }
+        if (diff < 1000 * 60 * 60 * 24) return '刚刚更新';
         return `${date.getMonth() + 1}月${date.getDate()}日更新`;
     };
 
@@ -213,30 +208,25 @@ export function HomePage() {
         try {
             const task = await queueChartTrackDownload(track);
             if (task.existing && task.libraryTrackId) {
-                toast.success('该歌曲已在本地，无需重复下载');
+                toast.success('已在本地库中');
                 return;
             }
             toast.success('已加入下载队列');
         } catch (error) {
             console.error('Download failed', error);
-            toast.error('下载任务添加失败');
+            toast.error('添加失败');
         }
     };
 
     const handlePlayChartTrack = async (track: ChartTrack) => {
         if (autoPlayQueue[track.id]) {
-            toast('歌曲正在准备播放，请稍候');
+            toast('正在准备播放...');
             return;
         }
-
-        setAutoPlayQueue((prev) => ({
-            ...prev,
-            [track.id]: { taskId: null, track }
-        }));
+        setAutoPlayQueue((prev) => ({ ...prev, [track.id]: { taskId: null, track } }));
 
         try {
             const task = await queueChartTrackDownload(track);
-
             if (task.existing && task.libraryTrackId) {
                 playTrack({
                     id: task.libraryTrackId,
@@ -246,29 +236,25 @@ export function HomePage() {
                     duration: track.duration,
                     album_id: task.libraryAlbumId || undefined
                 });
-                toast.success('已在本地，直接播放');
+                toast.success('直接播放本地音乐');
                 removeAutoPlayEntry(track.id);
                 return;
             }
-
-            setAutoPlayQueue((prev) => ({
-                ...prev,
-                [track.id]: { taskId: task.id, track }
-            }));
-            toast.success('已开始下载，完成后将自动播放');
+            setAutoPlayQueue((prev) => ({ ...prev, [track.id]: { taskId: task.id, track } }));
+            toast.success('开始下载，完成后自动播放');
         } catch (error) {
             console.error('Auto download failed', error);
-            toast.error('自动下载失败，仍可稍后重试');
+            toast.error('播放失败');
             removeAutoPlayEntry(track.id);
         }
     };
 
+    // Watch tasks for auto-play
     useEffect(() => {
         if (!tasks.length) return;
         setAutoPlayQueue((prev) => {
             let updated = false;
             const nextQueue = { ...prev };
-
             Object.entries(prev).forEach(([chartTrackId, entry]) => {
                 if (!entry.taskId) return;
                 const relatedTask = tasks.find((task) => task.id === entry.taskId);
@@ -285,7 +271,7 @@ export function HomePage() {
                             duration: entry.track.duration,
                             album_id: relatedTask.libraryAlbumId || undefined
                         });
-                        toast.success('下载完成，开始播放');
+                        toast.success(`开始播放: ${entry.track.name}`);
                     }
                     delete nextQueue[chartTrackId];
                     delete completedTaskNotifiedRef.current[relatedTask.id];
@@ -293,133 +279,146 @@ export function HomePage() {
                 } else if (relatedTask.status === 'failed') {
                     if (!failedTaskNotifiedRef.current[relatedTask.id]) {
                         failedTaskNotifiedRef.current[relatedTask.id] = true;
-                        toast.error('下载失败，无法播放');
+                        toast.error(`下载失败: ${entry.track.name}`);
                     }
                     delete nextQueue[chartTrackId];
                     delete failedTaskNotifiedRef.current[relatedTask.id];
                     updated = true;
                 }
             });
-
             return updated ? nextQueue : prev;
         });
     }, [tasks, playTrack]);
 
     return (
-        <div className="space-y-10 pb-10 animate-in fade-in duration-700">
-            {/* Hero Section */}
-            <div className="relative -mx-6 -mt-6 px-8 py-12 mb-8 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background z-0" />
-                <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="relative w-full min-h-[80vh] space-y-10 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            
+            {/* Ambient Background Glows */}
+            <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
+                <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-primary/10 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
+                <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-purple-500/10 blur-[100px] animate-pulse" style={{ animationDuration: '10s' }} />
+            </div>
 
-                <div className="relative z-10 flex flex-col gap-1">
-                    <h1 className="text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+            {/* Hero Section */}
+            <div className="relative space-y-6 pt-4 md:pt-8">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-5xl md:text-7xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground/80 to-foreground/40">
                         {greeting}
                     </h1>
-                    <p className="text-lg text-muted-foreground/80 max-w-2xl">
-                        Welcome back to your personal Music Hub. Your collection is ready.
+                    <p className="text-xl text-muted-foreground/80 font-light max-w-2xl">
+                        Your personal music sanctuary.
                     </p>
                 </div>
 
-                {/* Quick Stats Strip */}
-                <div className="relative z-10 mt-8 flex flex-wrap gap-4">
-                    <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-background/50 backdrop-blur-sm border border-border/50 shadow-sm">
-                        <Library className="w-4 h-4 text-primary" />
-                        <span className="text-sm font-medium">{stats.totalAlbums} Albums</span>
-                    </div>
-                    <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-background/50 backdrop-blur-sm border border-border/50 shadow-sm">
-                        <ListMusic className="w-4 h-4 text-blue-500" />
-                        <span className="text-sm font-medium">{playlists.length} Playlists</span>
-                    </div>
-                    {activeTaskCount > 0 && (
-                        <Link to="/downloads">
-                            <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-background/50 backdrop-blur-sm border border-border/50 shadow-sm hover:bg-accent/50 transition-colors cursor-pointer">
-                                <Download className="w-4 h-4 text-green-500 animate-bounce" />
-                                <span className="text-sm font-medium">{activeTaskCount} Downloading</span>
+                {/* Glass Stats Pills */}
+                <div className="flex flex-wrap gap-3">
+                    <Link to="/library" className="group">
+                        <div className="flex items-center gap-3 px-5 py-2.5 rounded-full bg-white/50 dark:bg-white/5 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm hover:bg-white/80 dark:hover:bg-white/10 transition-all duration-300">
+                            <div className="p-1.5 rounded-full bg-primary/10 text-primary">
+                                <Library className="w-4 h-4" />
                             </div>
-                        </Link>
-                    )}
-                    {failedTaskCount > 0 && (
-                        <Link to="/downloads">
-                            <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-red-500/10 backdrop-blur-sm border border-red-500/20 shadow-sm hover:bg-red-500/20 transition-colors cursor-pointer">
-                                <AlertCircle className="w-4 h-4 text-red-500" />
-                                <span className="text-sm font-medium text-red-500">{failedTaskCount} Failed</span>
+                            <span className="text-sm font-medium">{stats.totalAlbums} Albums</span>
+                        </div>
+                    </Link>
+                    
+                    <Link to="/playlists" className="group">
+                        <div className="flex items-center gap-3 px-5 py-2.5 rounded-full bg-white/50 dark:bg-white/5 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm hover:bg-white/80 dark:hover:bg-white/10 transition-all duration-300">
+                             <div className="p-1.5 rounded-full bg-blue-500/10 text-blue-500">
+                                <ListMusic className="w-4 h-4" />
+                            </div>
+                            <span className="text-sm font-medium">{playlists.length} Playlists</span>
+                        </div>
+                    </Link>
+
+                    {(activeTaskCount > 0 || failedTaskCount > 0) && (
+                        <Link to="/downloads" className="group">
+                             <div className={cn(
+                                 "flex items-center gap-3 px-5 py-2.5 rounded-full backdrop-blur-md border shadow-sm transition-all duration-300",
+                                 failedTaskCount > 0 
+                                    ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20"
+                                    : "bg-white/50 dark:bg-white/5 border-white/20 dark:border-white/10 hover:bg-white/80 dark:hover:bg-white/10"
+                             )}>
+                                {failedTaskCount > 0 ? (
+                                    <AlertCircle className="w-4 h-4" />
+                                ) : (
+                                    <Download className="w-4 h-4 animate-bounce text-green-500" />
+                                )}
+                                <span className="text-sm font-medium">
+                                    {failedTaskCount > 0 ? `${failedTaskCount} Failed` : `${activeTaskCount} Downloading`}
+                                </span>
                             </div>
                         </Link>
                     )}
                 </div>
             </div>
 
-            {/* Official Charts Section */}
-            <div className="space-y-6 px-2">
+            {/* Trending Charts Section */}
+            <div className="space-y-6">
                 <div className="flex items-end justify-between">
                     <div>
-                        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2 bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-500">
                             <TrendingUp className="w-6 h-6 text-primary" />
-                            Trending Charts
+                            Trending Now
                         </h2>
-                        <p className="text-sm text-muted-foreground mt-1">
-                            Real-time rankings from NetEase Cloud Music
-                        </p>
                     </div>
                 </div>
 
                 {isLoadingCharts ? (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {[...Array(3)].map((_, idx) => (
-                            <div key={idx} className="h-[400px] rounded-3xl bg-muted/30 animate-pulse" />
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {[...Array(4)].map((_, idx) => (
+                            <div key={idx} className="h-[400px] rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10 animate-pulse" />
                         ))}
                     </div>
                 ) : displayCharts.length > 0 ? (
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {displayCharts.map((chart) => {
-                            const tracks = chart.tracks.slice(0, 5); // Show top 5
+                            const tracks = chart.tracks.slice(0, 5);
                             const visual = getChartVisual(chart.key);
                             const Icon = visual.icon;
 
                             return (
                                 <div
                                     key={chart.key}
-                                    className="group relative overflow-hidden rounded-3xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                                    className="group relative overflow-hidden rounded-3xl border border-white/20 dark:border-white/10 bg-white/40 dark:bg-black/40 backdrop-blur-xl transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-1"
                                 >
-                                    {/* Dynamic Background Gradient */}
-                                    <div className={`absolute inset-0 bg-gradient-to-br ${visual.bgGradient} opacity-50 group-hover:opacity-100 transition-opacity duration-500`} />
+                                    {/* Subtle Gradient Overlay */}
+                                    <div className={`absolute inset-0 bg-gradient-to-br ${visual.bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none`} />
 
                                     <div className="relative p-6 flex flex-col h-full">
-                                        {/* Header */}
+                                        {/* Chart Header */}
                                         <div className="flex items-start justify-between mb-6">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-2.5 rounded-2xl bg-background/80 shadow-sm ring-1 ring-black/5 ${visual.color}`}>
+                                            <div className="flex items-center gap-4">
+                                                <div className={cn(
+                                                    "p-3 rounded-2xl shadow-inner bg-white/80 dark:bg-black/40 backdrop-blur-md ring-1 ring-inset ring-white/20",
+                                                    visual.color
+                                                )}>
                                                     <Icon className="w-6 h-6" />
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-bold text-lg leading-none mb-1">{chart.name}</h3>
-                                                    <p className="text-xs text-muted-foreground font-medium">
+                                                    <h3 className="font-bold text-lg leading-tight">{chart.name}</h3>
+                                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-1">
                                                         {formatUpdateTime(chart.updateTime)}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="text-xs font-medium px-2 py-1 rounded-full bg-background/50 text-muted-foreground">
-                                                {formatPlayCount(chart.playCount)} plays
-                                            </div>
                                         </div>
 
-                                        {/* Tracks List */}
+                                        {/* Track List */}
                                         <div className="flex-1 space-y-1">
                                             {tracks.map((track, index) => {
                                                 const isPreparing = Boolean(autoPlayQueue[track.id]);
-                                                const isTop3 = index < 3;
-                                                const rankColor = index === 0 ? 'text-yellow-500' :
-                                                    index === 1 ? 'text-slate-400' :
-                                                        index === 2 ? 'text-amber-700' : 'text-muted-foreground';
+                                                const rankColor = index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-orange-700' : 'text-muted-foreground/50';
 
                                                 return (
                                                     <div
                                                         key={track.id}
-                                                        className={`group/track flex items-center gap-3 p-2 rounded-xl transition-colors ${isPreparing ? 'cursor-wait bg-background/40' : 'hover:bg-background/60 cursor-pointer'}`}
+                                                        className={cn(
+                                                            "group/track flex items-center gap-3 p-2 rounded-xl transition-all duration-200",
+                                                            isPreparing ? "bg-primary/10 cursor-wait" : "hover:bg-white/50 dark:hover:bg-white/10 cursor-pointer"
+                                                        )}
                                                         onClick={() => handlePlayChartTrack(track)}
                                                     >
-                                                        <span className={`w-4 text-center font-bold text-sm ${rankColor} ${isTop3 ? 'scale-110' : ''}`}>
+                                                        <span className={cn("w-4 text-center font-bold text-sm tabular-nums", rankColor)}>
                                                             {index + 1}
                                                         </span>
 
@@ -432,31 +431,30 @@ export function HomePage() {
                                                             </div>
                                                         </div>
 
-                                                        {isPreparing ? (
-                                                            <div className="h-8 w-8 flex items-center justify-center text-primary">
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                            </div>
-                                                        ) : (
-                                                            <Button
-                                                                size="icon"
-                                                                variant="ghost"
-                                                                className="h-8 w-8 opacity-0 group-hover/track:opacity-100 transition-opacity"
-                                                                onClick={(e) => handleDownloadChartTrack(e, track)}
-                                                            >
-                                                                <Download className="h-4 w-4" />
-                                                            </Button>
-                                                        )}
+                                                        <div className="flex items-center opacity-0 group-hover/track:opacity-100 transition-opacity">
+                                                            {isPreparing ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                            ) : (
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary"
+                                                                    onClick={(e) => handleDownloadChartTrack(e, track)}
+                                                                >
+                                                                    <Download className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
                                         </div>
 
-                                        {/* Footer Action */}
-                                        <div className="mt-4 pt-4 border-t border-border/10 flex justify-center">
+                                        {/* Play All Action */}
+                                        <div className="mt-4 pt-4 border-t border-white/10 dark:border-white/5">
                                             <Button
                                                 variant="ghost"
-                                                size="sm"
-                                                className="w-full text-muted-foreground hover:text-primary hover:bg-primary/5 group-hover:bg-background/50"
+                                                className="w-full justify-center text-muted-foreground hover:text-primary hover:bg-primary/5"
                                                 onClick={() => playPlaylist(chart.tracks.map(t => ({
                                                     id: t.id,
                                                     title: t.name,
@@ -465,9 +463,10 @@ export function HomePage() {
                                                     cover: t.coverImgUrl || '',
                                                     duration: t.duration,
                                                     source: t.source
-                                                })))} // Play all
+                                                })))}
                                             >
-                                                <Play className="w-4 h-4 mr-2 fill-current" /> Play Top 100
+                                                <Play className="w-4 h-4 mr-2 fill-current" />
+                                                Play Top 100
                                             </Button>
                                         </div>
                                     </div>
@@ -476,22 +475,22 @@ export function HomePage() {
                         })}
                     </div>
                 ) : (
-                    <div className="rounded-3xl border border-dashed p-12 text-center text-muted-foreground bg-muted/30">
-                        暂无榜单数据，请稍后再试。
+                    <div className="rounded-3xl border border-dashed border-white/20 p-12 text-center text-muted-foreground bg-white/5 backdrop-blur-sm">
+                        暂无榜单数据
                     </div>
                 )}
             </div>
 
-            {/* Recently Added Albums */}
-            <div className="space-y-6 px-2">
+            {/* Recent Albums Section */}
+            <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                        <Clock className="w-6 h-6 text-primary" />
+                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-500">
+                        <Clock className="w-6 h-6 text-blue-500" />
                         Fresh Arrivals
                     </h2>
                     <Link to="/library">
-                        <Button variant="ghost" className="group">
-                            View Library <ChevronRight className="ml-1 w-4 h-4 transition-transform group-hover:translate-x-1" />
+                        <Button variant="ghost" className="rounded-full hover:bg-white/10">
+                            View Library <ChevronRight className="ml-1 w-4 h-4" />
                         </Button>
                     </Link>
                 </div>
@@ -499,7 +498,7 @@ export function HomePage() {
                 {isLoadingAlbums ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                         {[...Array(5)].map((_, i) => (
-                            <div key={i} className="aspect-square rounded-2xl bg-muted/50 animate-pulse" />
+                            <div key={i} className="aspect-square rounded-2xl bg-white/5 animate-pulse" />
                         ))}
                     </div>
                 ) : recentAlbums.length > 0 ? (
@@ -507,7 +506,7 @@ export function HomePage() {
                         {recentAlbums.map((album) => (
                             <div key={album.id} className="group space-y-3 cursor-pointer">
                                 <div
-                                    className="relative aspect-square overflow-hidden rounded-2xl bg-muted shadow-lg transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-2"
+                                    className="relative aspect-square overflow-hidden rounded-2xl bg-muted shadow-lg ring-1 ring-white/10 transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-2 group-hover:ring-white/30"
                                     onClick={() => handlePlayAlbum(album.id)}
                                 >
                                     {album.cover_path ? (
@@ -518,15 +517,15 @@ export function HomePage() {
                                             loading="lazy"
                                         />
                                     ) : (
-                                        <div className="flex h-full w-full items-center justify-center bg-muted">
-                                            <Music className="h-12 w-12 text-muted-foreground/50" />
+                                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                                            <Music className="h-12 w-12 text-white/20" />
                                         </div>
                                     )}
-
-                                    {/* Glassmorphic Play Overlay */}
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100 backdrop-blur-[2px]">
+                                    
+                                    {/* Hover Overlay */}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100 backdrop-blur-[2px]">
                                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 backdrop-blur-md border border-white/30 shadow-xl transition-transform duration-300 hover:scale-110">
-                                            <Play className="ml-1 h-7 w-7 text-white" fill="currentColor" />
+                                            <Play className="ml-1 h-6 w-6 text-white" fill="currentColor" />
                                         </div>
                                     </div>
                                 </div>
@@ -540,11 +539,11 @@ export function HomePage() {
                         ))}
                     </div>
                 ) : (
-                    <div className="py-16 text-center rounded-3xl border border-dashed bg-muted/30">
+                    <div className="py-16 text-center rounded-3xl border border-dashed border-white/20 bg-white/5 backdrop-blur-sm">
                         <Music className="mx-auto h-12 w-12 text-muted-foreground/20 mb-4" />
                         <p className="text-lg text-muted-foreground font-medium">No albums in your library yet.</p>
                         <Link to="/search" className="mt-6 inline-block">
-                            <Button size="lg" className="rounded-full px-8">Discover Music</Button>
+                            <Button className="rounded-full px-8 shadow-lg shadow-primary/20">Discover Music</Button>
                         </Link>
                     </div>
                 )}

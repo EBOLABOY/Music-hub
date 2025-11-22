@@ -24,7 +24,7 @@ const defaultNeteasePlaylists = [
     key: 'hot',
     id: process.env.NETEASE_HOT_PLAYLIST_ID || '3778678',
     name: '热歌榜',
-    description: '云音乐热度最高的单曲合集。'
+    description: '云音乐热度最高的单曲集合。'
   },
   {
     key: 'new',
@@ -49,9 +49,14 @@ const defaultNeteasePlaylists = [
     id: process.env.NETEASE_ACG_PLAYLIST_ID || '71385702',
     name: 'ACG 动漫榜',
     description: '二次元、游戏与动漫音乐精选。'
+  },
+  {
+    key: 'billboard',
+    id: process.env.NETEASE_BILLBOARD_PLAYLIST_ID || '60198',
+    name: '美国 Billboard 榜',
+    description: '美国 Billboard 公告牌排行榜精选单曲。'
   }
 ];
-
 const config = {
   env: process.env.NODE_ENV || 'production',
   port: parseIntOrDefault(process.env.PORT, 4000),
