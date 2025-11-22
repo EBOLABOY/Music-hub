@@ -303,7 +303,7 @@ export function HomePage() {
             {/* Hero Section */}
             <div className="relative space-y-6 pt-4 md:pt-8">
                 <div className="flex flex-col gap-2">
-                    <h1 className="text-5xl md:text-7xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground/80 to-foreground/40">
+                    <h1 className="text-3xl md:text-7xl font-bold tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground/80 to-foreground/40">
                         {greeting}
                     </h1>
                     <p className="text-xl text-muted-foreground/80 font-light max-w-2xl">

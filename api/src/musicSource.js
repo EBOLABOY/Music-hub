@@ -29,7 +29,7 @@ const http = axios.create({
     Referer: 'https://music.gdstudio.xyz/',
     'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8'
   },
-  timeout: 10000,
+  timeout: 30000,
   proxy: false,
   httpsAgent: agent,
   httpAgent: agent
@@ -51,64 +51,80 @@ const parseJSONP = (body) => {
 const buildCallback = () => `jQuery${Date.now()}_${Math.floor(Math.random() * 10 ** 12)}`;
 
 const fetchServerTime = async () => {
-  const { data } = await http.get(config.musicSource.timeEndpoint, {
-    responseType: 'text'
-  });
-  const parsed = parseInt(data, 10);
-  return Number.isNaN(parsed) ? Date.now() : parsed;
+  try {
+    const { data } = await http.get(config.musicSource.timeEndpoint, {
+      responseType: 'text',
+      timeout: 5000 // Shorter timeout for time check
+    });
+    const parsed = parseInt(data, 10);
+    return Number.isNaN(parsed) ? Date.now() : parsed;
+  } catch (e) {
+    console.warn('Failed to fetch server time, using local time:', e.message);
+    return Date.now();
+  }
 };
 
-const apiRequest = async ({ source = 'qobuz', ...params }) => {
+const apiRequest = async ({ source = 'qobuz', ...params }, retries = 3) => {
   await rateLimiter.consume();
   const callback = buildCallback();
-  const cookieHeader = await cloudflareCookies.getCookieHeader();
-  const bodyParams = { ...params, source };
-  const timestamp = await fetchServerTime();
 
-  if (bodyParams.types === 'search') {
-    bodyParams.s = buildSearchSignature(bodyParams.name, timestamp);
-  } else {
-    bodyParams.s = buildUrlSignature(bodyParams.id, timestamp);
-  }
-  bodyParams._ = timestamp;
+  try {
+    const cookieHeader = await cloudflareCookies.getCookieHeader();
+    const bodyParams = { ...params, source };
+    const timestamp = await fetchServerTime();
 
-  if (source === 'netease') {
-    const payload = new URLSearchParams(bodyParams).toString();
-    const headers = {
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      ...(cookieHeader ? { Cookie: cookieHeader } : {})
-    };
-    const { data } = await http.post(config.musicSource.apiBase, payload, {
-      params: { callback },
+    if (bodyParams.types === 'search') {
+      bodyParams.s = buildSearchSignature(bodyParams.name, timestamp);
+    } else {
+      bodyParams.s = buildUrlSignature(bodyParams.id, timestamp);
+    }
+    bodyParams._ = timestamp;
+
+    if (source === 'netease') {
+      const payload = new URLSearchParams(bodyParams).toString();
+      const headers = {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        ...(cookieHeader ? { Cookie: cookieHeader } : {})
+      };
+      const { data } = await http.post(config.musicSource.apiBase, payload, {
+        params: { callback },
+        responseType: 'text',
+        headers
+      });
+      return parseJSONP(data);
+    }
+    const { data } = await http.get(config.musicSource.apiBase, {
+      params: { ...bodyParams, callback },
       responseType: 'text',
-      headers
+      headers: cookieHeader ? { Cookie: cookieHeader } : undefined
     });
     return parseJSONP(data);
+  } catch (error) {
+    if (retries > 0 && (error.code === 'ECONNABORTED' || error.response?.status >= 500)) {
+      console.warn(`API request failed (${error.message}), retrying... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+      return apiRequest({ source, ...params }, retries - 1);
+    }
+    throw error;
   }
-  const { data } = await http.get(config.musicSource.apiBase, {
-    params: { ...bodyParams, callback },
-    responseType: 'text',
-    headers: cookieHeader ? { Cookie: cookieHeader } : undefined
-  });
-  return parseJSONP(data);
 };
 
 const normalizeResults = (entries, source) =>
   Array.isArray(entries)
     ? entries.map((item) => ({
-        ...item,
-        source: item?.source || source,
-        pic_id: item?.pic_id || item?.picId || item?.id
-      }))
+      ...item,
+      source: item?.source || source,
+      pic_id: item?.pic_id || item?.picId || item?.id
+    }))
     : [];
 
-export const searchTracks = async (query, source = 'qobuz') => {
+export const searchTracks = async (query, source = 'qobuz', page = 1) => {
   if (!query) return [];
   const params = {
     types: 'search',
     count: config.musicSource.pageSize,
     source,
-    pages: 1,
+    pages: page,
     name: query
   };
   const parsed = await apiRequest(params);

@@ -99,11 +99,11 @@ export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 md:gap-2">
           <button
             onClick={toggleMode}
             className={cn(
-              "p-2 rounded-full hover:bg-muted transition-colors",
+              "hidden md:block p-2 rounded-full hover:bg-muted transition-colors",
               mode !== 'sequence' && "text-primary bg-primary/10"
             )}
             title={mode === 'sequence' ? 'Sequence' : mode === 'loop' ? 'Loop One' : 'Shuffle'}
@@ -139,8 +139,8 @@ export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps
         </div>
 
         {/* Progress */}
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">
+        <div className="flex items-center gap-3 flex-1 min-w-0 md:flex">
+          <span className="hidden md:block text-xs text-muted-foreground tabular-nums w-10 text-right">
             {formatTime(currentTime)}
           </span>
           <input
@@ -159,13 +159,13 @@ export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps
               "disabled:opacity-50 disabled:cursor-not-allowed"
             )}
           />
-          <span className="text-xs text-muted-foreground tabular-nums w-10">
+          <span className="hidden md:block text-xs text-muted-foreground tabular-nums w-10">
             {formatTime(duration)}
           </span>
         </div>
 
         {/* Volume & Extras */}
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           <button
             onClick={toggleMute}
             className="p-2 rounded-full hover:bg-muted transition-colors"

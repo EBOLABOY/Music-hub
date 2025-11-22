@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import {
     Search as SearchIcon,
     Download,
@@ -80,16 +80,26 @@ export function SearchPage() {
         }
     }, [source]);
 
-    const { data: searchResponse, isLoading } = useQuery({
+    const {
+        data: searchResponse,
+        isLoading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage
+    } = useInfiniteQuery({
         queryKey: ['search', debouncedQuery, source],
-        queryFn: () => api.search(debouncedQuery, source),
-        // 只有当 debouncedQuery 有值时才请求
+        queryFn: ({ pageParam = 1 }) => api.search(debouncedQuery, source, pageParam as number),
+        getNextPageParam: (lastPage, allPages) => {
+            // Assuming if we get results, there might be more.
+            // Ideally backend should return total pages, but for now we check if we got any results.
+            return lastPage.results.length > 0 ? allPages.length + 1 : undefined;
+        },
+        initialPageParam: 1,
         enabled: debouncedQuery.length > 0,
-        // 设置缓存时间，让体验更丝滑，从其他页面切回来如果是相同搜索词，直接显示结果
-        staleTime: 1000 * 60 * 5, // 5分钟内不视为过期
+        staleTime: 1000 * 60 * 5,
     });
 
-    const results = searchResponse?.results || [];
+    const results = searchResponse?.pages.flatMap(page => page.results) || [];
 
     const handleDownload = async (track: TrackInfo) => {
         try {
@@ -108,6 +118,7 @@ export function SearchPage() {
             }
         } catch (error) {
             toast.error('Failed to start download');
+            throw error; // Re-throw for batch handling
         }
     };
 
@@ -257,76 +268,145 @@ export function SearchPage() {
 
             {/* Results Area */}
             <div className="w-full z-10 pb-20">
-                {isLoading ? (
+                {isLoading && results.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4">
                         <Loader2 className="h-10 w-10 animate-spin text-primary" />
                         <p className="text-muted-foreground animate-pulse">Searching the universe...</p>
                     </div>
                 ) : results.length > 0 ? (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-8 duration-500">
-                        {results.map((track, i) => (
-                            <div
-                                key={track.id || i}
-                                className="group flex items-center gap-4 p-3 rounded-2xl bg-white/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-[1.01]"
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-8 duration-500">
+                        <div className="flex justify-between items-center px-2">
+                            <p className="text-muted-foreground text-sm">
+                                Found {results.length} tracks
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-2"
+                                onClick={async () => {
+                                    if (!confirm(`Are you sure you want to download all ${results.length} tracks?`)) return;
+
+                                    toast.success(`Starting batch download for ${results.length} tracks...`);
+
+                                    // Simple concurrency control
+                                    const CONCURRENCY = 3;
+                                    const queue = [...results];
+
+                                    const processNext = async () => {
+                                        if (queue.length === 0) return;
+                                        const track = queue.shift();
+                                        if (!track) return;
+
+                                        try {
+                                            await handleDownload(track);
+                                        } catch (e) {
+                                            console.error('Download failed for', track.title);
+                                        } finally {
+                                            await processNext();
+                                        }
+                                    };
+
+                                    const workers = [];
+                                    for (let i = 0; i < Math.min(CONCURRENCY, results.length); i++) {
+                                        workers.push(processNext());
+                                    }
+
+                                    await Promise.all(workers);
+                                    toast.success('Batch download requests submitted');
+                                }}
                             >
-                                {/* Info */}
-                                <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5 pl-2">
-                                    <h3 className="font-semibold text-base truncate text-foreground group-hover:text-primary transition-colors">
-                                        {track.title || track.name}
-                                    </h3>
-                                    <div className="flex items-center gap-2 text-sm text-muted-foreground truncate">
-                                        <span
-                                            className="truncate max-w-[200px] hover:text-primary hover:underline cursor-pointer transition-colors"
-                                            onClick={() => handleArtistClick(Array.isArray(track.artist) ? track.artist[0] : track.artist || '')}
+                                <Download className="h-4 w-4" />
+                                Download All
+                            </Button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {results.map((track, i) => (
+                                <div
+                                    key={track.id || i}
+                                    className="group flex items-center gap-4 p-3 rounded-2xl bg-white/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-[1.01]"
+                                >
+                                    {/* Info */}
+                                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5 pl-2">
+                                        <h3 className="font-semibold text-base truncate text-foreground group-hover:text-primary transition-colors">
+                                            {track.title || track.name}
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground truncate">
+                                            <span
+                                                className="truncate max-w-[200px] hover:text-primary hover:underline cursor-pointer transition-colors"
+                                                onClick={() => handleArtistClick(Array.isArray(track.artist) ? track.artist[0] : track.artist || '')}
+                                            >
+                                                {Array.isArray(track.artist) ? track.artist.join(', ') : track.artist}
+                                            </span>
+                                            {(track.album || track.album_name) && (
+                                                <>
+                                                    <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
+                                                    <span
+                                                        className="truncate max-w-[200px] opacity-80 hover:opacity-100 hover:text-primary hover:underline cursor-pointer transition-all"
+                                                        onClick={() => handleAlbumClick(track.album || track.album_name || '')}
+                                                    >
+                                                        {track.album || track.album_name}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex items-center gap-2 pr-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                            onClick={() => handlePlay(track)}
+                                            title="Play"
                                         >
-                                            {Array.isArray(track.artist) ? track.artist.join(', ') : track.artist}
-                                        </span>
-                                        {(track.album || track.album_name) && (
-                                            <>
-                                                <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
-                                                <span
-                                                    className="truncate max-w-[200px] opacity-80 hover:opacity-100 hover:text-primary hover:underline cursor-pointer transition-all"
-                                                    onClick={() => handleAlbumClick(track.album || track.album_name || '')}
-                                                >
-                                                    {track.album || track.album_name}
-                                                </span>
-                                            </>
-                                        )}
+                                            <Play className="h-5 w-5 fill-current" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                            onClick={() => setTrackToAdd(track.id || track.trackId || '')}
+                                            title="Add to Playlist"
+                                        >
+                                            <Plus className="h-5 w-5" />
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            className="rounded-full gap-2 shadow-sm hover:shadow-md transition-all bg-white/50 dark:bg-white/10 hover:bg-primary hover:text-primary-foreground border border-white/10"
+                                            onClick={() => handleDownload(track)}
+                                        >
+                                            <Download className="h-4 w-4" />
+                                            <span className="hidden sm:inline">Download</span>
+                                        </Button>
                                     </div>
                                 </div>
+                            ))}
+                        </div>
 
-                                {/* Actions */}
-                                <div className="flex items-center gap-2 pr-2">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                        onClick={() => handlePlay(track)}
-                                        title="Play"
-                                    >
-                                        <Play className="h-5 w-5 fill-current" />
-                                    </Button>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                        onClick={() => setTrackToAdd(track.id || track.trackId || '')}
-                                        title="Add to Playlist"
-                                    >
-                                        <Plus className="h-5 w-5" />
-                                    </Button>
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        className="rounded-full gap-2 shadow-sm hover:shadow-md transition-all bg-white/50 dark:bg-white/10 hover:bg-primary hover:text-primary-foreground border border-white/10"
-                                        onClick={() => handleDownload(track)}
-                                    >
-                                        <Download className="h-4 w-4" />
-                                        <span className="hidden sm:inline">Download</span>
-                                    </Button>
-                                </div>
+                        {/* Load More Button */}
+                        {hasNextPage && (
+                            <div className="flex justify-center pt-8 pb-4">
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    onClick={() => fetchNextPage()}
+                                    disabled={isFetchingNextPage}
+                                    className="min-w-[200px] rounded-full"
+                                >
+                                    {isFetchingNextPage ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Loading more...
+                                        </>
+                                    ) : (
+                                        'Load More Results'
+                                    )}
+                                </Button>
                             </div>
-                        ))}
+                        )}
                     </div>
                 ) : debouncedQuery ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">

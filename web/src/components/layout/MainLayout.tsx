@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { PlayerBar } from '@/components/PlayerBar';
 import { FullScreenPlayer } from '@/components/FullScreenPlayer';
+import { BottomNav } from './BottomNav';
 import { usePlayer } from '@/contexts/PlayerContext';
 
 export type ThemeMode = 'light' | 'dark';
@@ -18,10 +19,12 @@ export function MainLayout({ theme, toggleTheme }: MainLayoutProps) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
-      <Sidebar />
+      <div className="hidden md:flex h-full">
+        <Sidebar />
+      </div>
 
       <div className="flex flex-1 flex-col min-w-0 relative">
-        <main className="flex-1 overflow-y-auto scrollbar-hide pb-32">
+        <main className="flex-1 overflow-y-auto scrollbar-hide pb-32 md:pb-32 pb-[140px]">
           <div className="container mx-auto max-w-7xl p-6 md:p-10">
             <Outlet />
           </div>
@@ -34,7 +37,7 @@ export function MainLayout({ theme, toggleTheme }: MainLayoutProps) {
         />
 
         {/* Floating Player Bar Effect */}
-        <div className="absolute bottom-0 left-0 right-0 z-20">
+        <div className="absolute bottom-[64px] md:bottom-0 left-0 right-0 z-20">
           <div className="bg-white/80 backdrop-blur-2xl border-t border-white/20 shadow-2xl dark:bg-black/80 dark:border-white/20">
             <PlayerBar
               track={currentTrack}
@@ -43,6 +46,8 @@ export function MainLayout({ theme, toggleTheme }: MainLayoutProps) {
             />
           </div>
         </div>
+
+        <BottomNav />
       </div>
     </div>
   );
