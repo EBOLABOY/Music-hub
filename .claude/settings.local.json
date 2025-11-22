@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git push:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\n更新配置文件和页面组件\n\n- 更新 api/src/config.js 配置\n- 优化 DownloadsPage、HomePage 和 LibraryPage 页面组件\n- 添加 .claude 目录配置\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
