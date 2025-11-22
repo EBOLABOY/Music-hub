@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { X, SkipBack, SkipForward, Play, Pause, Volume2, VolumeX, Repeat, Shuffle } from 'lucide-react';
+import { X, SkipBack, SkipForward, Play, Pause, Volume2, VolumeX, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { LyricsView } from './LyricsView';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
+import { useNavigate } from 'react-router-dom';
 
 interface FullScreenPlayerProps {
     isOpen: boolean;
@@ -21,10 +22,14 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
         currentTime,
         duration,
         volume,
-        setVolume
+        setVolume,
+        mode,
+        toggleMode
     } = usePlayer();
 
     const [isMuted, setIsMuted] = useState(false);
+    const [showLyrics, setShowLyrics] = useState(false);
+    const navigate = useNavigate();
 
     // Handle escape key to close
     useEffect(() => {
@@ -65,6 +70,11 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
         setIsMuted(!isMuted);
     };
 
+    const handleArtistClick = (artist: string) => {
+        onClose();
+        navigate(`/search?q=${encodeURIComponent(artist)}`);
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground transition-all duration-500 animate-in fade-in slide-in-from-bottom-4">
             {/* Dynamic Background with Gradient Overlay */}
@@ -90,7 +100,17 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
                 <div className="flex flex-col items-center">
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Now Playing</span>
                 </div>
-                <div className="w-10" /> {/* Spacer */}
+                <button
+                    onClick={() => setShowLyrics(!showLyrics)}
+                    className={cn(
+                        "md:hidden p-2 rounded-full transition-colors relative z-10",
+                        showLyrics ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"
+                    )}
+                    aria-label="Toggle lyrics"
+                >
+                    <span className="text-xs font-bold">LRC</span>
+                </button>
+                <div className="hidden md:block w-10" /> {/* Spacer for desktop */}
             </div>
 
             {/* Main Content */}
@@ -98,10 +118,11 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
 
                 {/* Left Side: Album Art & Info */}
                 <div className={cn(
-                    "flex flex-col items-center justify-center w-full transition-all duration-500 min-h-0 md:w-[45%]"
+                    "flex flex-col items-center justify-center w-full transition-all duration-500 min-h-0 md:w-[45%]",
+                    showLyrics ? "hidden md:flex" : "flex"
                 )}>
                     {/* Album Art Card */}
-                    <div className="relative aspect-square w-full max-w-[280px] md:max-w-[400px] max-h-[40vh] md:max-h-[50vh] rounded-[2rem] shadow-2xl mb-6 md:mb-10 group ring-1 ring-border/10 flex-shrink-0">
+                    <div className="relative aspect-square w-full max-w-[min(280px,40vh)] md:max-w-[min(400px,50vh)] rounded-[2rem] shadow-2xl mb-6 md:mb-10 group ring-1 ring-border/10 flex-shrink-0">
                         <div className="absolute inset-0 rounded-[2rem] overflow-hidden bg-muted">
                             {currentTrack.album_id ? (
                                 <img
@@ -124,9 +145,23 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
                         <h2 className="text-2xl md:text-3xl font-bold tracking-tight truncate">
                             {currentTrack.title}
                         </h2>
-                        <p className="text-lg text-muted-foreground font-medium truncate">
+                        <p
+                            className="text-lg text-muted-foreground font-medium truncate hover:text-primary hover:underline cursor-pointer transition-colors"
+                            onClick={() => handleArtistClick(currentTrack.artist)}
+                        >
                             {currentTrack.artist}
                         </p>
+                        {currentTrack.album && (
+                            <p
+                                className="text-sm text-muted-foreground/60 font-medium truncate hover:text-primary hover:underline cursor-pointer transition-colors"
+                                onClick={() => {
+                                    onClose();
+                                    navigate(`/search?q=${encodeURIComponent(currentTrack.album || '')}`);
+                                }}
+                            >
+                                {currentTrack.album}
+                            </p>
+                        )}
                     </div>
 
                     {/* Progress Bar */}
@@ -153,8 +188,17 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
 
                     {/* Controls */}
                     <div className="flex items-center justify-center gap-6 md:gap-10 mb-6 md:mb-8 flex-shrink-0">
-                        <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                            <Shuffle className="w-5 h-5" />
+                        <button
+                            onClick={toggleMode}
+                            className={cn(
+                                "p-2 transition-colors",
+                                mode === 'sequence' ? "text-muted-foreground hover:text-foreground" : "text-primary"
+                            )}
+                            title={mode === 'sequence' ? 'Sequence' : mode === 'loop' ? 'Loop One' : 'Shuffle'}
+                        >
+                            {mode === 'sequence' && <Repeat className="w-5 h-5" />}
+                            {mode === 'loop' && <Repeat1 className="w-5 h-5" />}
+                            {mode === 'shuffle' && <Shuffle className="w-5 h-5" />}
                         </button>
 
                         <button
@@ -182,9 +226,7 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
                             <SkipForward className="w-8 h-8 fill-current" />
                         </button>
 
-                        <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                            <Repeat className="w-5 h-5" />
-                        </button>
+                        <div className="w-9" /> {/* Spacer to balance layout since we removed the right button */}
                     </div>
 
                     {/* Volume & Toggles */}
@@ -213,19 +255,20 @@ export function FullScreenPlayer({ isOpen, onClose }: FullScreenPlayerProps) {
                 </div>
 
                 {/* Right Side: Lyrics */}
-                {
-                    <div className="hidden md:flex flex-col h-full w-[55%] min-h-0 animate-in fade-in slide-in-from-right-8 duration-700 delay-100">
-                        <div className="h-full rounded-[2rem] bg-muted/30 backdrop-blur-md border border-border/5 overflow-hidden relative group">
-                            <LyricsView
-                                trackId={currentTrack.id}
-                                currentTime={currentTime}
-                                className="h-full py-8 px-8 text-lg md:text-xl"
-                                activeClassName="text-primary scale-105 font-bold origin-left"
-                                inactiveClassName="text-muted-foreground/60 hover:text-foreground/80 transition-colors"
-                            />
-                        </div>
+                <div className={cn(
+                    "flex-col h-full w-full md:w-[55%] min-h-0 animate-in fade-in slide-in-from-right-8 duration-700 delay-100",
+                    showLyrics ? "flex" : "hidden md:flex"
+                )}>
+                    <div className="h-full rounded-[2rem] bg-muted/30 backdrop-blur-md border border-border/5 overflow-hidden relative group">
+                        <LyricsView
+                            trackId={currentTrack.id}
+                            currentTime={currentTime}
+                            className="h-full py-8 px-8 text-lg md:text-xl"
+                            activeClassName="text-primary scale-105 font-bold origin-left"
+                            inactiveClassName="text-muted-foreground/60 hover:text-foreground/80 transition-colors"
+                        />
                     </div>
-                }
+                </div>
             </div>
         </div>
     );

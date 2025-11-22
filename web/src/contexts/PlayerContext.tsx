@@ -19,6 +19,7 @@ interface PlayerContextType {
     duration: number;
     queue: Track[];
     currentIndex: number;
+    mode: 'sequence' | 'loop' | 'shuffle';
 
     // Actions
     playTrack: (track: Track) => void;
@@ -30,6 +31,7 @@ interface PlayerContextType {
     seek: (time: number) => void;
     setVolume: (level: number) => void;
     togglePlayback: () => void;
+    toggleMode: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -44,6 +46,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const [duration, setDuration] = useState(0);
     const [queue, setQueue] = useState<Track[]>([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
+
+    const [mode, setMode] = useState<'sequence' | 'loop' | 'shuffle'>('sequence');
 
     useEffect(() => {
         if (audioRef.current) {
@@ -80,31 +84,92 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setIsPlaying(true);
     }, []);
 
+    const toggleMode = useCallback(() => {
+        setMode(prev => {
+            if (prev === 'sequence') return 'loop';
+            if (prev === 'loop') return 'shuffle';
+            return 'sequence';
+        });
+    }, []);
+
     const next = useCallback(() => {
+        if (queue.length === 0) return;
+
+        if (mode === 'loop') {
+            if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play();
+            }
+            return;
+        }
+
+        if (mode === 'shuffle') {
+            const randomIndex = Math.floor(Math.random() * queue.length);
+            setCurrentTrack(queue[randomIndex]);
+            setCurrentIndex(randomIndex);
+            setIsPlaying(true);
+            return;
+        }
+
+        // Sequence mode
         if (currentIndex < queue.length - 1) {
             const nextIndex = currentIndex + 1;
             setCurrentTrack(queue[nextIndex]);
             setCurrentIndex(nextIndex);
             setIsPlaying(true);
+        } else {
+            // Loop back to start if at end
+            const nextIndex = 0;
+            setCurrentTrack(queue[nextIndex]);
+            setCurrentIndex(nextIndex);
+            setIsPlaying(true);
         }
-    }, [currentIndex, queue]);
+    }, [currentIndex, queue, mode]);
 
     const prev = useCallback(() => {
+        if (queue.length === 0) return;
+
+        if (mode === 'loop') {
+            if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play();
+            }
+            return;
+        }
+
+        if (mode === 'shuffle') {
+            const randomIndex = Math.floor(Math.random() * queue.length);
+            setCurrentTrack(queue[randomIndex]);
+            setCurrentIndex(randomIndex);
+            setIsPlaying(true);
+            return;
+        }
+
+        // Sequence mode
         if (currentIndex > 0) {
             const prevIndex = currentIndex - 1;
             setCurrentTrack(queue[prevIndex]);
             setCurrentIndex(prevIndex);
             setIsPlaying(true);
+        } else {
+            // Loop to end if at start
+            const prevIndex = queue.length - 1;
+            setCurrentTrack(queue[prevIndex]);
+            setCurrentIndex(prevIndex);
+            setIsPlaying(true);
         }
-    }, [currentIndex, queue]);
+    }, [currentIndex, queue, mode]);
 
     const handleEnded = useCallback(() => {
-        if (currentIndex < queue.length - 1) {
-            next();
+        if (mode === 'loop') {
+            if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play();
+            }
         } else {
-            setIsPlaying(false);
+            next();
         }
-    }, [currentIndex, queue, next]);
+    }, [mode, next]);
 
     const pause = useCallback(() => setIsPlaying(false), []);
     const resume = useCallback(() => setIsPlaying(true), []);
@@ -133,6 +198,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         duration,
         queue,
         currentIndex,
+        mode,
         playTrack,
         playPlaylist,
         pause,
@@ -141,7 +207,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         prev,
         seek,
         setVolume: updateVolume,
-        togglePlayback
+        togglePlayback,
+        toggleMode
     };
 
     return (

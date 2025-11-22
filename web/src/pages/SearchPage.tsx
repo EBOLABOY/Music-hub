@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { 
-    Search as SearchIcon, 
-    Download, 
-    Loader2, 
-    Play, 
-    Plus, 
-    Music, 
-    Disc, 
-    Globe, 
+import {
+    Search as SearchIcon,
+    Download,
+    Loader2,
+    Play,
+    Plus,
+    Music,
+    Disc,
+    Globe,
     Sparkles,
-    Command
+    Command,
+    Waves,
+    ChevronDown,
+    Check
 } from 'lucide-react';
-import { api, type TrackInfo } from '@/services/api';
+import { api, type TrackInfo, type SearchSource } from '@/services/api';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -23,22 +27,34 @@ const STORAGE_KEY_QUERY = 'music_hub_search_query';
 const STORAGE_KEY_SOURCE = 'music_hub_search_source';
 
 export function SearchPage() {
-    // 1. 初始化状态时，优先从 sessionStorage 读取
+    const [searchParams] = useSearchParams();
+    const urlQuery = searchParams.get('q');
+
+    // 1. 初始化状态时，优先从 URL 读取，其次从 sessionStorage 读取
     const [query, setQuery] = useState(() => {
-        return sessionStorage.getItem(STORAGE_KEY_QUERY) || '';
-    });
-    
-    // 注意：debouncedQuery 也要初始化，否则进入页面虽然有文字，但不会触发搜索
-    const [debouncedQuery, setDebouncedQuery] = useState(() => {
-        return sessionStorage.getItem(STORAGE_KEY_QUERY) || '';
+        return urlQuery || sessionStorage.getItem(STORAGE_KEY_QUERY) || '';
     });
 
-    const [source, setSource] = useState<'qobuz' | 'netease'>(() => {
-        return (sessionStorage.getItem(STORAGE_KEY_SOURCE) as 'qobuz' | 'netease') || 'netease';
+    // 注意：debouncedQuery 也要初始化
+    const [debouncedQuery, setDebouncedQuery] = useState(() => {
+        return urlQuery || sessionStorage.getItem(STORAGE_KEY_QUERY) || '';
+    });
+
+    const [source, setSource] = useState<SearchSource>(() => {
+        return (sessionStorage.getItem(STORAGE_KEY_SOURCE) as SearchSource) || 'netease';
     });
 
     const [trackToAdd, setTrackToAdd] = useState<string | null>(null);
     const [isFocused, setIsFocused] = useState(false);
+    const [isSourceOpen, setIsSourceOpen] = useState(false);
+
+    // 监听 URL 变化，如果 URL 变了（比如从外部跳转进来），更新搜索状态
+    useEffect(() => {
+        if (urlQuery && urlQuery !== query) {
+            setQuery(urlQuery);
+            setDebouncedQuery(urlQuery);
+        }
+    }, [urlQuery]);
 
     // 2. 监听 query 和 source 变化，实时写入 sessionStorage
     useEffect(() => {
@@ -103,16 +119,40 @@ export function SearchPage() {
         setDebouncedQuery(query);
     };
 
+    const handleArtistClick = (artist: string) => {
+        setQuery(artist);
+        // 如果当前是 qobuz_album，切回 qobuz 搜歌手
+        if (source === 'qobuz_album') {
+            setSource('qobuz');
+        }
+    };
+
+    const handleAlbumClick = (album: string) => {
+        setQuery(album);
+        // 如果当前是 qobuz，切换到 qobuz_album 搜专辑
+        if (source === 'qobuz') {
+            setSource('qobuz_album');
+        }
+    };
+
+    const getSourceName = (s: string) => {
+        if (s === 'netease') return 'Netease';
+        if (s === 'qobuz') return 'Qobuz';
+        if (s === 'qobuz_album') return 'Qobuz Album';
+        if (s === 'tidal') return 'Tidal';
+        return s;
+    };
+
     return (
         <div className="relative min-h-[80vh] flex flex-col items-center w-full max-w-5xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            
+
             {/* Header Section */}
             <div className="text-center space-y-4 mt-8 md:mt-16 z-10">
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary via-purple-500 to-pink-500">
                     Discover Music
                 </h1>
                 <p className="text-muted-foreground text-lg max-w-lg mx-auto">
-                    Search across {source === 'qobuz' ? 'Qobuz High-Res' : 'Netease Cloud Music'} library
+                    Search across {source === 'qobuz' || source === 'qobuz_album' ? 'Qobuz High-Res' : source === 'tidal' ? 'Tidal High-Fidelity' : 'Netease Cloud Music'} library
                 </p>
             </div>
 
@@ -128,33 +168,60 @@ export function SearchPage() {
                     "relative flex items-center p-2 bg-white/80 dark:bg-black/80 backdrop-blur-2xl border border-white/20 dark:border-white/10 shadow-2xl rounded-full transition-all duration-300",
                     isFocused && "ring-2 ring-primary/20 bg-white dark:bg-black"
                 )}>
-                    
-                    {/* Source Switcher (Integrated) */}
-                    <div className="flex bg-gray-100 dark:bg-white/5 p-1 rounded-full mr-2 shrink-0">
+
+                    {/* Source Switcher (Dropdown) */}
+                    <div className="relative shrink-0 mr-2">
                         <button
-                            onClick={() => setSource('netease')}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300",
-                                source === 'netease' 
-                                    ? "bg-white dark:bg-gray-800 text-primary shadow-sm" 
-                                    : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
-                            )}
+                            onClick={() => setIsSourceOpen(!isSourceOpen)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors text-sm font-medium"
                         >
-                            <Globe className="w-4 h-4" />
-                            <span className="hidden sm:inline">Netease</span>
+                            {source === 'netease' && <Globe className="w-4 h-4 text-primary" />}
+                            {(source === 'qobuz' || source === 'qobuz_album') && <Disc className="w-4 h-4 text-blue-500" />}
+                            {source === 'tidal' && <Waves className="w-4 h-4 text-cyan-500" />}
+                            <span className="hidden sm:inline">
+                                {getSourceName(source)}
+                            </span>
+                            <ChevronDown className={cn("w-3 h-3 text-muted-foreground transition-transform", isSourceOpen && "rotate-180")} />
                         </button>
-                        <button
-                            onClick={() => setSource('qobuz')}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300",
-                                source === 'qobuz' 
-                                    ? "bg-white dark:bg-gray-800 text-blue-500 shadow-sm" 
-                                    : "text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
-                            )}
-                        >
-                            <Disc className="w-4 h-4" />
-                            <span className="hidden sm:inline">Qobuz</span>
-                        </button>
+
+                        {/* Dropdown Menu */}
+                        {isSourceOpen && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={() => setIsSourceOpen(false)}
+                                />
+                                <div className="absolute top-full left-0 mt-2 w-48 p-1 bg-white/90 dark:bg-black/90 backdrop-blur-xl border border-white/20 dark:border-white/10 rounded-2xl shadow-xl z-50 animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="space-y-1">
+                                        {[
+                                            { id: 'netease', name: 'Netease', icon: Globe, color: 'text-primary' },
+                                            { id: 'qobuz', name: 'Qobuz', icon: Disc, color: 'text-blue-500' },
+                                            { id: 'tidal', name: 'Tidal', icon: Waves, color: 'text-cyan-500' }
+                                        ].map((item) => (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => {
+                                                    setSource(item.id as any);
+                                                    setIsSourceOpen(false);
+                                                }}
+                                                className={cn(
+                                                    "w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-colors",
+                                                    source === item.id
+                                                        ? "bg-primary/10 text-foreground"
+                                                        : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <item.icon className={cn("w-4 h-4", item.color)} />
+                                                    <span>{item.name}</span>
+                                                </div>
+                                                {source === item.id && <Check className="w-3 h-3 text-primary" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {/* Input Field */}
@@ -171,16 +238,16 @@ export function SearchPage() {
                             className="w-full h-full bg-transparent border-none outline-none pl-8 pr-4 text-lg placeholder:text-muted-foreground/50 text-foreground"
                             autoFocus={!query} // 只有当没有查询词时才自动聚焦，避免切回来时键盘突然弹起（移动端）
                         />
-                         <div className="hidden md:flex absolute right-2 items-center gap-1 pointer-events-none text-xs text-muted-foreground bg-gray-100 dark:bg-white/10 px-2 py-1 rounded">
+                        <div className="hidden md:flex absolute right-2 items-center gap-1 pointer-events-none text-xs text-muted-foreground bg-gray-100 dark:bg-white/10 px-2 py-1 rounded">
                             <Command className="w-3 h-3" />
                             <span>Enter</span>
                         </div>
                     </div>
 
                     {/* Search Button */}
-                    <Button 
-                        onClick={handleSearch} 
-                        size="lg" 
+                    <Button
+                        onClick={handleSearch}
+                        size="lg"
                         className="rounded-full h-12 px-8 shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
                     >
                         Search
@@ -196,94 +263,70 @@ export function SearchPage() {
                         <p className="text-muted-foreground animate-pulse">Searching the universe...</p>
                     </div>
                 ) : results.length > 0 ? (
-                    <div className="rounded-3xl border border-white/20 bg-white/40 dark:bg-black/40 backdrop-blur-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-500">
-                        <table className="w-full text-left text-sm">
-                            <thead className="border-b border-white/10 bg-black/5 dark:bg-white/5 text-muted-foreground backdrop-blur-md">
-                                <tr>
-                                    <th className="px-6 py-4 font-medium w-16">#</th>
-                                    <th className="px-6 py-4 font-medium">Track</th>
-                                    <th className="px-6 py-4 font-medium hidden md:table-cell">Artist</th>
-                                    <th className="px-6 py-4 font-medium hidden lg:table-cell">Album</th>
-                                    <th className="px-6 py-4 font-medium w-[120px] text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {results.map((track, i) => (
-                                    <tr
-                                        key={track.id || i}
-                                        className="group transition-colors hover:bg-primary/5 dark:hover:bg-white/5"
-                                    >
-                                        <td className="px-6 py-4 text-muted-foreground font-medium">
-                                            <div className="relative w-8 flex items-center justify-center">
-                                                <span className="group-hover:opacity-0 transition-opacity">{i + 1}</span>
-                                                <button
-                                                    onClick={() => handlePlay(track)}
-                                                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 scale-50 group-hover:scale-100 transition-all text-primary"
-                                                >
-                                                    <Play className="h-5 w-5 fill-current" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-muted shadow-sm group-hover:shadow-md transition-shadow relative">
-                                                    {(track as any).cover || (track as any).pic_id ? (
-                                                        <img
-                                                            src={(track as any).cover || api.getCoverUrl('track', (track as any).pic_id)}
-                                                            alt=""
-                                                            className="h-full w-full object-cover"
-                                                            onError={(e) => {
-                                                                (e.target as HTMLImageElement).style.display = 'none';
-                                                            }}
-                                                        />
-                                                    ) : (
-                                                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                                                            <Music className="h-5 w-5 text-muted-foreground/50" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold text-base truncate max-w-[200px] sm:max-w-[300px] text-foreground group-hover:text-primary transition-colors">
-                                                        {track.title || track.name}
-                                                    </span>
-                                                    <span className="md:hidden text-xs text-muted-foreground truncate max-w-[200px]">
-                                                        {Array.isArray(track.artist) ? track.artist.join(', ') : track.artist}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-muted-foreground hidden md:table-cell truncate max-w-[200px]">
+                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-8 duration-500">
+                        {results.map((track, i) => (
+                            <div
+                                key={track.id || i}
+                                className="group flex items-center gap-4 p-3 rounded-2xl bg-white/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 hover:bg-white/60 dark:hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-[1.01]"
+                            >
+                                {/* Info */}
+                                <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5 pl-2">
+                                    <h3 className="font-semibold text-base truncate text-foreground group-hover:text-primary transition-colors">
+                                        {track.title || track.name}
+                                    </h3>
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground truncate">
+                                        <span
+                                            className="truncate max-w-[200px] hover:text-primary hover:underline cursor-pointer transition-colors"
+                                            onClick={() => handleArtistClick(Array.isArray(track.artist) ? track.artist[0] : track.artist || '')}
+                                        >
                                             {Array.isArray(track.artist) ? track.artist.join(', ') : track.artist}
-                                        </td>
-                                        <td className="px-6 py-4 text-muted-foreground hidden lg:table-cell truncate max-w-[200px]">
-                                            {track.album || track.album_name || '-'}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 transform translate-x-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-x-0">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-9 w-9 rounded-full hover:bg-primary/10 hover:text-primary"
-                                                    onClick={() => setTrackToAdd(track.id || track.trackId || '')}
-                                                    title="Add to Playlist"
+                                        </span>
+                                        {(track.album || track.album_name) && (
+                                            <>
+                                                <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
+                                                <span
+                                                    className="truncate max-w-[200px] opacity-80 hover:opacity-100 hover:text-primary hover:underline cursor-pointer transition-all"
+                                                    onClick={() => handleAlbumClick(track.album || track.album_name || '')}
                                                 >
-                                                    <Plus className="h-5 w-5" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-9 w-9 rounded-full hover:bg-primary/10 hover:text-primary"
-                                                    onClick={() => handleDownload(track)}
-                                                    title="Download"
-                                                >
-                                                    <Download className="h-5 w-5" />
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                                    {track.album || track.album_name}
+                                                </span>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2 pr-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                        onClick={() => handlePlay(track)}
+                                        title="Play"
+                                    >
+                                        <Play className="h-5 w-5 fill-current" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                        onClick={() => setTrackToAdd(track.id || track.trackId || '')}
+                                        title="Add to Playlist"
+                                    >
+                                        <Plus className="h-5 w-5" />
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className="rounded-full gap-2 shadow-sm hover:shadow-md transition-all bg-white/50 dark:bg-white/10 hover:bg-primary hover:text-primary-foreground border border-white/10"
+                                        onClick={() => handleDownload(track)}
+                                    >
+                                        <Download className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Download</span>
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : debouncedQuery ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
@@ -303,9 +346,9 @@ export function SearchPage() {
                         </div>
                         <h2 className="text-2xl font-semibold">Ready to explore?</h2>
                         <div className="flex gap-4 text-sm text-muted-foreground">
-                             <span className="bg-muted/50 px-3 py-1 rounded-full">🎵 Song Name</span>
-                             <span className="bg-muted/50 px-3 py-1 rounded-full">👤 Artist</span>
-                             <span className="bg-muted/50 px-3 py-1 rounded-full">💿 Album</span>
+                            <span className="bg-muted/50 px-3 py-1 rounded-full">🎵 Song Name</span>
+                            <span className="bg-muted/50 px-3 py-1 rounded-full">👤 Artist</span>
+                            <span className="bg-muted/50 px-3 py-1 rounded-full">💿 Album</span>
                         </div>
                     </div>
                 )}

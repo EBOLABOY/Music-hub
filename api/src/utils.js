@@ -125,3 +125,86 @@ export const findBestFuzzyMatch = (results, searchQuery, options = {}) => {
 
   return bestMatch;
 };
+
+export const extractUrl = (payload) => {
+  if (!payload) return null;
+  if (typeof payload === 'string') return payload;
+
+  if (typeof payload === 'object') {
+    if (typeof payload.url === 'string') {
+      return payload.url;
+    }
+
+    if (payload.data) {
+      const data = payload.data;
+      if (typeof data === 'string') {
+        return data;
+      }
+      if (Array.isArray(data)) {
+        for (const entry of data) {
+          const nested = extractUrl(entry);
+          if (nested) return nested;
+        }
+      } else if (typeof data === 'object') {
+        const nested = extractUrl(data);
+        if (nested) return nested;
+      }
+    }
+  }
+
+  if (Array.isArray(payload)) {
+    for (const entry of payload) {
+      const nested = extractUrl(entry);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+};
+
+export const preview = (payload, maxLength = 600) => {
+  try {
+    const str =
+      typeof payload === 'string'
+        ? payload
+        : JSON.stringify(payload, (_, value) =>
+          typeof value === 'bigint' ? value.toString() : value
+        );
+    if (!str) return '';
+    return str.length > maxLength ? `${str.slice(0, maxLength)}…` : str;
+  } catch (error) {
+    return `[unserializable: ${error.message}]`;
+  }
+};
+
+export const buildAudioErrorPayload = (audioInfo, trackId, source) => {
+  if (audioInfo.status === 'rejected') {
+    return {
+      message: audioInfo.reason?.message || 'Failed to locate download url for the track',
+      details: {
+        trackId,
+        source,
+        status: 'rejected'
+      }
+    };
+  }
+
+  const attemptsPreview =
+    Array.isArray(audioInfo.value?.attempts) && audioInfo.value.attempts.length > 0
+      ? audioInfo.value.attempts.map((a) => ({
+        br: a?.br,
+        resp: preview(a?.resp, 400)
+      }))
+      : undefined;
+
+  return {
+    message: 'Failed to locate download url for the track',
+    details: {
+      trackId,
+      source,
+      status: 'fulfilled',
+      responsePreview: preview(audioInfo.value),
+      attempts: attemptsPreview
+    }
+  };
+};

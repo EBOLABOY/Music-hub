@@ -1,19 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { Toaster } from 'react-hot-toast';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
 import { MainLayout, type ThemeMode } from '@/components/layout/MainLayout';
-import { HomePage } from '@/pages/HomePage';
-import { DownloadsPage } from '@/pages/DownloadsPage';
-import { LibraryPage } from '@/pages/LibraryPage';
-import { NotFoundPage } from '@/pages/NotFoundPage';
-import { SearchPage } from '@/pages/SearchPage';
-import { PlaylistsPage } from '@/pages/PlaylistsPage';
-import { PlaylistDetailPage } from '@/pages/PlaylistDetailPage';
 import { PlayerProvider } from '@/contexts/PlayerContext';
+
+const HomePage = lazy(() => import('@/pages/HomePage').then(module => ({ default: module.HomePage })));
+const DownloadsPage = lazy(() => import('@/pages/DownloadsPage').then(module => ({ default: module.DownloadsPage })));
+const LibraryPage = lazy(() => import('@/pages/LibraryPage').then(module => ({ default: module.LibraryPage })));
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then(module => ({ default: module.NotFoundPage })));
+const SearchPage = lazy(() => import('@/pages/SearchPage').then(module => ({ default: module.SearchPage })));
+const PlaylistsPage = lazy(() => import('@/pages/PlaylistsPage').then(module => ({ default: module.PlaylistsPage })));
+const PlaylistDetailPage = lazy(() => import('@/pages/PlaylistDetailPage').then(module => ({ default: module.PlaylistDetailPage })));
+const ChartDetailPage = lazy(() => import('@/pages/ChartDetailPage').then(module => ({ default: module.ChartDetailPage })));
+
+const PageLoader = () => (
+  <div className="flex h-full w-full items-center justify-center min-h-[50vh]">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
 const queryClient = new QueryClient();
 
@@ -73,13 +82,46 @@ function App() {
             />
             <Routes>
               <Route path="/" element={<MainLayout theme={theme} toggleTheme={toggleTheme} />}>
-                <Route index element={<HomePage />} />
-                <Route path="search" element={<SearchPage />} />
-                <Route path="downloads" element={<DownloadsPage />} />
-                <Route path="library" element={<LibraryPage />} />
-                <Route path="playlists" element={<PlaylistsPage />} />
-                <Route path="playlists/:id" element={<PlaylistDetailPage />} />
-                <Route path="*" element={<NotFoundPage />} />
+                <Route index element={
+                  <Suspense fallback={<PageLoader />}>
+                    <HomePage />
+                  </Suspense>
+                } />
+                <Route path="search" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <SearchPage />
+                  </Suspense>
+                } />
+                <Route path="downloads" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <DownloadsPage />
+                  </Suspense>
+                } />
+                <Route path="library" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <LibraryPage />
+                  </Suspense>
+                } />
+                <Route path="playlists" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PlaylistsPage />
+                  </Suspense>
+                } />
+                <Route path="playlists/:id" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PlaylistDetailPage />
+                  </Suspense>
+                } />
+                <Route path="charts/:key" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ChartDetailPage />
+                  </Suspense>
+                } />
+                <Route path="*" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <NotFoundPage />
+                  </Suspense>
+                } />
               </Route>
             </Routes>
           </BrowserRouter>

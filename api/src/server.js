@@ -10,6 +10,7 @@ import createRouter from './routes.js';
 import DownloadManager from './downloadManager.js';
 import LibraryService from './libraryService.js';
 import streamRoutes from './streamRoutes.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 import playlistRoutes from './playlistRoutes.js';
 
@@ -48,10 +49,7 @@ if (fs.existsSync(staticDir)) {
   });
 }
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
-});
+app.use(errorHandler);
 
 const server = app.listen(config.port, () => {
   console.log(`API server running on port ${config.port}`);

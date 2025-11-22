@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-export type SearchSource = 'qobuz' | 'netease' | string;
+export type SearchSource = 'qobuz' | 'netease' | 'tidal' | string;
 
 export interface TrackInfo {
   id?: string;

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Music, Maximize2 } from 'lucide-react';
+import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Music, Maximize2, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import { usePlayer, type Track } from '@/contexts/PlayerContext';
 import { cn } from '@/lib/utils';
 import { api } from '@/services/api';
+import { useNavigate } from 'react-router-dom';
 
 interface PlayerBarProps {
   track: Track | null;
@@ -11,8 +12,9 @@ interface PlayerBarProps {
 }
 
 export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps) {
-  const { togglePlayback, next, prev, seek, setVolume, volume, currentTime, duration } = usePlayer();
+  const { togglePlayback, next, prev, seek, setVolume, volume, currentTime, duration, mode, toggleMode } = usePlayer();
   const [isMuted, setIsMuted] = useState(false);
+  const navigate = useNavigate();
 
   const toggleMute = () => {
     if (isMuted) {
@@ -39,6 +41,11 @@ export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleArtistClick = (e: React.MouseEvent, artist: string) => {
+    e.stopPropagation();
+    navigate(`/search?q=${encodeURIComponent(artist)}`);
   };
 
   // Always render, even when no track - show empty state
@@ -81,13 +88,30 @@ export function PlayerBar({ track, isPlaying, onOpenFullScreen }: PlayerBarProps
               {track?.title || 'No track playing'}
             </div>
             <div className="text-xs text-muted-foreground truncate">
-              {track?.artist || 'Select a track to play'}
+              <span
+                className="hover:text-primary hover:underline cursor-pointer transition-colors"
+                onClick={(e) => track?.artist && handleArtistClick(e, track.artist)}
+              >
+                {track?.artist || 'Select a track to play'}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Controls */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleMode}
+            className={cn(
+              "p-2 rounded-full hover:bg-muted transition-colors",
+              mode !== 'sequence' && "text-primary bg-primary/10"
+            )}
+            title={mode === 'sequence' ? 'Sequence' : mode === 'loop' ? 'Loop One' : 'Shuffle'}
+          >
+            {mode === 'sequence' && <Repeat className="w-4 h-4 text-muted-foreground" />}
+            {mode === 'loop' && <Repeat1 className="w-4 h-4" />}
+            {mode === 'shuffle' && <Shuffle className="w-4 h-4" />}
+          </button>
           <button
             onClick={prev}
             disabled={!track}

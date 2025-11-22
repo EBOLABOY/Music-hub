@@ -1,0 +1,16 @@
+import config from './config.js';
+console.log('config ok');
+import TaskStore from './taskStore.js';
+console.log('TaskStore ok');
+import createRouter from './routes.js';
+console.log('createRouter ok');
+import DownloadManager from './downloadManager.js';
+console.log('DownloadManager ok');
+import LibraryService from './libraryService.js';
+console.log('LibraryService ok');
+import streamRoutes from './streamRoutes.js';
+console.log('streamRoutes ok');
+import { errorHandler } from './middleware/errorHandler.js';
+console.log('errorHandler ok');
+import playlistRoutes from './playlistRoutes.js';
+console.log('playlistRoutes ok');

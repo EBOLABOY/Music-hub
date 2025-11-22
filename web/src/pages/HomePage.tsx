@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
     Music,
     Library,
@@ -31,6 +31,7 @@ type AutoPlayEntry = {
 };
 
 export function HomePage() {
+    const navigate = useNavigate();
     const { playTrack, playPlaylist } = usePlayer();
     const [autoPlayQueue, setAutoPlayQueue] = useState<Record<string, { taskId: string | null; track: ChartTrack }>>({});
     const completedTaskNotifiedRef = useRef<Record<string, boolean>>({});
@@ -292,7 +293,7 @@ export function HomePage() {
 
     return (
         <div className="relative w-full min-h-[80vh] space-y-10 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            
+
             {/* Ambient Background Glows */}
             <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
                 <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-primary/10 blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
@@ -320,10 +321,10 @@ export function HomePage() {
                             <span className="text-sm font-medium">{stats.totalAlbums} Albums</span>
                         </div>
                     </Link>
-                    
+
                     <Link to="/playlists" className="group">
                         <div className="flex items-center gap-3 px-5 py-2.5 rounded-full bg-white/50 dark:bg-white/5 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-sm hover:bg-white/80 dark:hover:bg-white/10 transition-all duration-300">
-                             <div className="p-1.5 rounded-full bg-blue-500/10 text-blue-500">
+                            <div className="p-1.5 rounded-full bg-blue-500/10 text-blue-500">
                                 <ListMusic className="w-4 h-4" />
                             </div>
                             <span className="text-sm font-medium">{playlists.length} Playlists</span>
@@ -332,12 +333,12 @@ export function HomePage() {
 
                     {(activeTaskCount > 0 || failedTaskCount > 0) && (
                         <Link to="/downloads" className="group">
-                             <div className={cn(
-                                 "flex items-center gap-3 px-5 py-2.5 rounded-full backdrop-blur-md border shadow-sm transition-all duration-300",
-                                 failedTaskCount > 0 
+                            <div className={cn(
+                                "flex items-center gap-3 px-5 py-2.5 rounded-full backdrop-blur-md border shadow-sm transition-all duration-300",
+                                failedTaskCount > 0
                                     ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/20"
                                     : "bg-white/50 dark:bg-white/5 border-white/20 dark:border-white/10 hover:bg-white/80 dark:hover:bg-white/10"
-                             )}>
+                            )}>
                                 {failedTaskCount > 0 ? (
                                     <AlertCircle className="w-4 h-4" />
                                 ) : (
@@ -455,18 +456,10 @@ export function HomePage() {
                                             <Button
                                                 variant="ghost"
                                                 className="w-full justify-center text-muted-foreground hover:text-primary hover:bg-primary/5"
-                                                onClick={() => playPlaylist(chart.tracks.map(t => ({
-                                                    id: t.id,
-                                                    title: t.name,
-                                                    artist: t.artists.join(' / '),
-                                                    album: t.album,
-                                                    cover: t.coverImgUrl || '',
-                                                    duration: t.duration,
-                                                    source: t.source
-                                                })))}
+                                                onClick={() => navigate(`/charts/${chart.key}`)}
                                             >
-                                                <Play className="w-4 h-4 mr-2 fill-current" />
-                                                Play Top 100
+                                                <ListMusic className="w-4 h-4 mr-2" />
+                                                View Top 100
                                             </Button>
                                         </div>
                                     </div>
@@ -521,7 +514,7 @@ export function HomePage() {
                                             <Music className="h-12 w-12 text-white/20" />
                                         </div>
                                     )}
-                                    
+
                                     {/* Hover Overlay */}
                                     <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100 backdrop-blur-[2px]">
                                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 backdrop-blur-md border border-white/30 shadow-xl transition-transform duration-300 hover:scale-110">

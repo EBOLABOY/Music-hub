@@ -6,12 +6,14 @@ import { AddToPlaylistModal } from '@/components/AddToPlaylistModal';
 import { api, type MediaAlbum, type MediaTrack, type ScannerStatus } from '@/services/api';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 export function LibraryPage() {
     const [selectedAlbum, setSelectedAlbum] = useState<MediaAlbum | null>(null);
     const [trackToAdd, setTrackToAdd] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const { playTrack } = usePlayer();
+    const navigate = useNavigate();
 
     const { data: status = { isScanning: false, logs: [] } } = useQuery<ScannerStatus>({
         queryKey: ['scannerStatus'],
@@ -141,8 +143,22 @@ export function LibraryPage() {
 
                             <div className="flex-1 space-y-6 min-w-0">
                                 <div className="text-center md:text-left space-y-2">
-                                    <h2 className="text-3xl md:text-5xl font-bold tracking-tight truncate">{selectedAlbum.name}</h2>
-                                    <p className="text-xl md:text-2xl text-primary font-medium">{selectedAlbum.artist}</p>
+                                    <h2
+                                        className="text-3xl md:text-5xl font-bold tracking-tight truncate hover:text-primary hover:underline cursor-pointer transition-colors"
+                                        onClick={() => {
+                                            navigate(`/search?q=${encodeURIComponent(selectedAlbum.name)}`);
+                                        }}
+                                    >
+                                        {selectedAlbum.name}
+                                    </h2>
+                                    <p
+                                        className="text-xl md:text-2xl text-primary font-medium hover:underline cursor-pointer inline-block"
+                                        onClick={() => {
+                                            navigate(`/search?q=${encodeURIComponent(selectedAlbum.artist)}`);
+                                        }}
+                                    >
+                                        {selectedAlbum.artist}
+                                    </p>
                                     <p className="text-sm text-muted-foreground">{selectedAlbum.year || 'Unknown Year'}</p>
                                 </div>
 
@@ -184,48 +200,48 @@ export function LibraryPage() {
                         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 pb-20">
                             {isLoadingAlbums
                                 ? Array.from({ length: 12 }).map((_, index) => (
-                                      <div key={index} className="space-y-3 p-3 rounded-2xl">
-                                          <div className="aspect-square rounded-xl bg-white/10 dark:bg-white/5 animate-pulse" />
-                                          <div className="space-y-2">
-                                              <div className="h-4 w-3/4 rounded bg-white/10 dark:bg-white/5 animate-pulse" />
-                                              <div className="h-3 w-1/2 rounded bg-white/10 dark:bg-white/5 animate-pulse" />
-                                          </div>
-                                      </div>
-                                  ))
+                                    <div key={index} className="space-y-3 p-3 rounded-2xl">
+                                        <div className="aspect-square rounded-xl bg-white/10 dark:bg-white/5 animate-pulse" />
+                                        <div className="space-y-2">
+                                            <div className="h-4 w-3/4 rounded bg-white/10 dark:bg-white/5 animate-pulse" />
+                                            <div className="h-3 w-1/2 rounded bg-white/10 dark:bg-white/5 animate-pulse" />
+                                        </div>
+                                    </div>
+                                ))
                                 : filteredAlbums.map((album) => (
-                                      <div
-                                          key={album.id}
-                                          className="group cursor-pointer space-y-3 p-3 rounded-2xl hover:bg-white/30 dark:hover:bg-white/5 transition-all duration-300 hover:shadow-xl animate-in fade-in duration-500"
-                                          onClick={() => setSelectedAlbum(album)}
-                                      >
-                                          <div className="relative aspect-square overflow-hidden rounded-xl bg-muted/50 shadow-md ring-1 ring-black/5 dark:ring-white/10 transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-1">
-                                              {album.cover_path ? (
-                                                  <img
-                                                      src={api.getCoverUrl('album', album.id)}
-                                                      alt={album.name}
-                                                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                                      loading="lazy"
-                                                  />
-                                              ) : (
-                                                  <div className="flex h-full w-full items-center justify-center">
-                                                      <Music className="h-12 w-12 text-muted-foreground/30" />
-                                                  </div>
-                                              )}
+                                    <div
+                                        key={album.id}
+                                        className="group cursor-pointer space-y-3 p-3 rounded-2xl hover:bg-white/30 dark:hover:bg-white/5 transition-all duration-300 hover:shadow-xl animate-in fade-in duration-500"
+                                        onClick={() => setSelectedAlbum(album)}
+                                    >
+                                        <div className="relative aspect-square overflow-hidden rounded-xl bg-muted/50 shadow-md ring-1 ring-black/5 dark:ring-white/10 transition-all duration-500 group-hover:shadow-2xl group-hover:-translate-y-1">
+                                            {album.cover_path ? (
+                                                <img
+                                                    src={api.getCoverUrl('album', album.id)}
+                                                    alt={album.name}
+                                                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                    loading="lazy"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center">
+                                                    <Music className="h-12 w-12 text-muted-foreground/30" />
+                                                </div>
+                                            )}
 
-                                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity duration-300 group-hover:opacity-100 backdrop-blur-[2px]">
-                                                  <div className="h-12 w-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-                                                      <Play className="h-6 w-6 text-white ml-1" fill="currentColor" />
-                                                  </div>
-                                              </div>
-                                          </div>
-                                          <div className="space-y-1 text-sm">
-                                              <h3 className="font-semibold leading-tight truncate text-foreground/90 group-hover:text-primary transition-colors">
-                                                  {album.name}
-                                              </h3>
-                                              <p className="text-xs text-muted-foreground truncate">{album.artist}</p>
-                                          </div>
-                                      </div>
-                                  ))}
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity duration-300 group-hover:opacity-100 backdrop-blur-[2px]">
+                                                <div className="h-12 w-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                                                    <Play className="h-6 w-6 text-white ml-1" fill="currentColor" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1 text-sm">
+                                            <h3 className="font-semibold leading-tight truncate text-foreground/90 group-hover:text-primary transition-colors">
+                                                {album.name}
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground truncate">{album.artist}</p>
+                                        </div>
+                                    </div>
+                                ))}
                         </div>
                     )}
                 </>
